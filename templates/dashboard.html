@@ -1,0 +1,101 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIC-NetPOLIx - Dashboard</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='dashboard.css') }}">
+</head>
+<body>
+    <div class="dashboard-container">
+        <!-- Menú lateral deslizable -->
+        <div class="side-menu" id="sideMenu">
+            <div class="menu-header">
+                <div class="user-avatar-menu">
+                    <img src="{{ url_for('static', filename='avatar-default.png') }}" alt="Avatar" id="menuAvatar">
+                </div>
+                <div class="menu-user-info">
+                    <span class="menu-nickname" id="menuNickname"></span>
+                    <span class="menu-email" id="menuEmail"></span>
+                </div>
+            </div>
+            <nav class="menu-options">
+                <div>
+                    <a href = "#" class="menu-option" id="menuInicio">
+                        <span></span> Inicio
+                    </a>
+                    <a href="#" class="menu-option" id="menuMiCuenta">
+                        <span></span> Mi Perfil
+                    </a>
+                    <a href="#" class="menu-option" id="menuMisPuntos">
+                        <span></span> Mis Puntos
+                    </a>
+                    <a href="#" class="menu-option" id="menuMisVideos">
+                        <span></span> Mis videos
+                    </a>
+                </div>
+                <a href="#" class="menu-option logout-option" id="menuLogoutBtn">
+                    <span></span> Cerrar Sesión
+                </a>
+            </nav>
+        </div>
+
+        <!-- Contenido principal -->
+        <main class="main-content">
+            <div class="header">
+                <div class="user-profile" id="userProfile">
+                    <div class="user-avatar">
+                        <img src="{{ url_for('static', filename='avatar-default.png') }}" alt="Avatar" id="userAvatar">
+                    </div>
+                    <div class="user-info">
+                        <span class="user-nickname" id="userNickname"></span>
+                    </div>
+                </div>
+
+                <div class="header-buttons">
+                    <div class="dropdown" id="dropdownCategorias">
+                        <button id="btnCategorias" class="header-btn">Categorias</button>
+                        <div class="dropdown-content" id="dropdownContent">
+                        </div>
+                    </div>
+
+                    <div class="search-wrapper">
+                        <input type="text" id="searchInputHeader" class="search-input-header" placeholder="Buscar...">
+                        <img src="/static/buscar.png" alt="Buscar" class="search-icon-header" id="searchBtnHeader">
+                    </div>
+                </div>
+                
+                <div class="logo">
+                    <div class="carrito-icono" id="carritoIcono">
+                        <img src="{{ url_for('static', filename='compras.png') }}" alt="Carrito" class="carrito-img">
+                        <span class="carrito-cantidad" id="carritoCantidad"></span>
+                    </div>
+                    <h2 id="logoNetpolix" style="cursor:pointer;">NetPolix</h2>
+                </div>
+            </div>
+            <div id="contentArea" class="content-area">
+            </div>
+        </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='dashboard.js') }}"></script>
+
+    <!-- Panel lateral carrito -->
+    <div class="carrito-panel" id="carritoPanel">
+        <div class="carrito-panel-header">
+            <h3>Mi Carrito</h3>
+            <button class="carrito-cerrar" id="carritoCerrar">✕</button>
+        </div>
+        <div class="carrito-items" id="carritoItems">
+            <p class="carrito-vacio">Tu carrito está vacío</p>
+        </div>
+        <div class="carrito-footer">
+            <div class="carrito-total" id="carritoTotal"></div>
+            <button class="btn-ir-pagar" id="btnIrPagar">Ir a pagar →</button>
+        </div>
+    </div>
+    <div class="carrito-overlay" id="carritoOverlay"></div>
+
+</body>
+</html>

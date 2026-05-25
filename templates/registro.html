@@ -1,0 +1,61 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIC-NetPOLIx - Registro de Usuario</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='registro.css') }}">
+    <link rel="icon" type="image/svg+xml" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'%3E%3Ctext x='50%25' y='50%25' text-anchor='middle' dy='.35em' font-size='70'%3E🎬%3C/text%3E%3C/svg%3E">
+</head>
+<body>
+    <div class="container">
+        <div class="register-card">
+            <h1>Crear Cuenta</h1>
+            <p class="subtitle">Regístrate para disfrutar del mejor contenido</p>
+            
+            <form id="registerForm">
+                <div class="input-group">
+                    <input type="text" id="nombre" placeholder="Nombre completo" required>
+                </div>
+
+                <div class="input-group">
+                   <input type="text" id="nickname" placeholder="Nombre de usuario (nickname)" required>
+                </div>
+                
+                <div class="input-group">
+                    <input type="text" id="cedula" placeholder="Número de cédula" required>
+                </div>
+                
+                <div class="input-group">
+                    <input type="email" id="email" placeholder="Correo electrónico" required>
+                </div>
+                
+                <div class="input-group">
+                    <input type="password" id="password" placeholder="Contraseña" required>
+                </div>
+                
+                <div class="input-group">
+                    <input type="password" id="confirmPassword" placeholder="Confirmar contraseña" required>
+                </div>
+                
+                <div class="input-group">
+                    <input type="email" id="emailReferidor" placeholder="Email del referidor (opcional)">
+                    <small class="input-hint">Si alguien te invitó, ingresa su email aquí</small>
+                </div>
+
+                <div class="input-group">
+                    <label for="fechaNacimiento" style="color:#aaa; font-size:12px; display:block; margin-bottom:4px;">Fecha de nacimiento (opcional)</label>
+                    <input type="date" id="fechaNacimiento">
+                </div>
+                
+                <button type="submit" class="btn-register">Registrarse</button>
+            </form>
+            
+            <p class="login-link">¿Ya tienes cuenta? <a href="/login">Inicia sesión aquí</a></p>
+            <div id="message" class="message"></div>
+        </div>
+    </div>
+    <script src="{{ url_for('static', filename='registro.js') }}"></script>
+</body>
+</html>

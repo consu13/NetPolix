@@ -1,0 +1,107 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIC-NetPOLIx - Pago</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="{{ url_for('static', filename='pago.css') }}">
+</head>
+<body>
+    <div class="pago-container">
+        <div class="pago-header">
+            <button class="btn-volver" id="btnVolver">← Volver</button>
+            <h1>Finalizar compra</h1>
+        </div>
+
+        <div class="pago-contenido">
+            <!-- Lista de items -->
+            <div class="pago-items" id="pagoItems">
+                <h2>Tu pedido</h2>
+                <div id="listaItems"></div>
+            </div>
+
+            <!-- Resumen -->
+            <div class="pago-resumen">
+                <h2>Resumen</h2>
+                <div class="resumen-card">
+                    <div class="resumen-fila">
+                        <span>Puntos actuales</span>
+                        <span class="resumen-valor" id="puntosActuales">Cargando...</span>
+                    </div>
+                    <div class="resumen-fila">
+                        <span>Puntos a ganar</span>
+                        <span class="resumen-valor verde" id="puntosGanar">0</span>
+                    </div>
+                    <div class="separador"></div>
+                    <div class="resumen-fila total">
+                        <span>Total a pagar</span>
+                        <span class="resumen-valor" id="totalPagar">$0.00</span>
+                    </div>
+                    <div class="saldo-restante" id="saldoRestanteInfo"></div>
+                        <button class="btn-confirmar" id="btnConfirmar">Canjear con puntos (compra permanente)</button>
+                        <button class="btn-tarjeta" id="btnTarjeta" style="display:none">Pagar con tarjeta</button>
+                    <div id="mensajePago" class="mensaje-pago"></div>
+                </div>
+            </div>
+        </div>
+
+
+            <!-- Modal pasarela de pagos -->
+        <div class="modal-pago-overlay" id="modalPagoOverlay" style="display:none">
+            <div class="modal-pago">
+                <div class="modal-pago-header">
+                    <h3>Pago con tarjeta</h3>
+                    <button class="modal-cerrar" id="modalCerrar">✕</button>
+                </div>
+
+                <div class="tarjeta-visual" id="tarjetaVisual">
+                    <div class="tarjeta-logo" id="tarjetaLogo">💳</div>
+                    <div class="tarjeta-numero-display" id="tarjetaNumeroDisplay">•••• •••• •••• ••••</div>
+                    <div class="tarjeta-info-display">
+                        <div>
+                            <div class="tarjeta-label">Titular</div>
+                            <div class="tarjeta-titular-display" id="tarjetaTitularDisplay">NOMBRE APELLIDO</div>
+                        </div>
+                        <div>
+                            <div class="tarjeta-label">Vence</div>
+                            <div id="tarjetaVenceDisplay">MM/AA</div>
+                        </div>
+                    </div>
+                </div>
+
+                <div class="modal-pago-form">
+                    <div class="form-group">
+                        <label>Número de tarjeta</label>
+                        <input type="text" id="numeroTarjeta" placeholder="0000 0000 0000 0000" maxlength="19">
+                        <span class="tipo-tarjeta-badge" id="tipoTarjetaBadge"></span>
+                    </div>
+                    <div class="form-group">
+                        <label>Titular</label>
+                        <input type="text" id="titularTarjeta" placeholder="">
+                    </div>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label>Vencimiento</label>
+                            <input type="text" id="vencimiento" placeholder="MM/AA" maxlength="5">
+                        </div>
+                        <div class="form-group">
+                            <label>CVV</label>
+                            <input type="password" id="cvv" placeholder="•••" maxlength="4">
+                        </div>
+                    </div>
+                    <div class="total-modal">
+                        Total a pagar: <span id="totalModal">$0.00</span>
+                    </div>
+                    <button class="btn-pagar-modal" id="btnPagarModal">Pagar ahora</button>
+                    <div id="mensajeModal" class="mensaje-modal"></div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    
+
+    <script src="{{ url_for('static', filename='pago.js') }}"></script>
+</body>
+</html>
