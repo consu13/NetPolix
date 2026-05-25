@@ -854,6 +854,9 @@ async function mostrarEpisodios(idSerie, temporada, titulo) {
                     </div>
                     <div class="mv-detail-right">
                         <p class="mv-descripcion">${v.descripcion || 'Sin descripción disponible.'}</p>
+                        <div id="mv-extra-${v.id_video}" style="margin-top:16px;">
+                            <span style="color:#555; font-size:12px;">Cargando detalles...</span>
+                        </div>
                     </div>
                 </div>
                 <div class="mv-detail-actions">
@@ -874,6 +877,48 @@ async function mostrarEpisodios(idSerie, temporada, titulo) {
 
         detailEl.style.display = 'block';
         detailEl.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+
+        fetch(`/api/video/${v.id_video}/personas-idiomas`, {
+            headers: { 'Authorization': `Bearer ${token}` }
+        }).then(r => r.json()).then(d => {
+            const extraEl = document.getElementById(`mv-extra-${v.id_video}`);
+            if (!extraEl) return;
+
+            const fila = (label, valores) => valores.length === 0 ? '' : `
+                <div style="margin-bottom:10px;">
+                    <span style="color:#aaa; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">${label}</span>
+                    <p style="color:#e0e0e0; font-size:13px; margin:4px 0 0;">${valores.join(', ')}</p>
+                </div>`;
+
+            const idiomasTexto = d.idiomas.map(i => `${i.lenguaje} <span style="color:#888;font-size:11px;">(${i.tipo})</span>`).join(', ');
+            const filaIdiomas = d.idiomas.length === 0 ? '' : `
+                <div style="margin-bottom:10px;">
+                    <span style="color:#aaa; font-size:12px; text-transform:uppercase; letter-spacing:0.5px;">Idiomas</span>
+                    <p style="color:#e0e0e0; font-size:13px; margin:4px 0 0;">${idiomasTexto}</p>
+                </div>`;
+
+            let html = '<div style="border-top:1px solid #2a2a2a; padding-top:14px;">';
+            if (d.es_serie) {
+                html += fila('Productores', d.productores);
+                html += fila('Actores', d.actores);
+            } else {
+                html += fila('Director(es)', d.directores);
+                html += fila('Actores', d.actores);
+            }
+            html += filaIdiomas;
+
+            if (!d.es_serie && d.directores.length === 0 && d.actores.length === 0 && d.idiomas.length === 0) {
+                html += '<span style="color:#555; font-size:12px;">Sin información adicional registrada.</span>';
+            }
+            if (d.es_serie && d.productores.length === 0 && d.actores.length === 0 && d.idiomas.length === 0) {
+                html += '<span style="color:#555; font-size:12px;">Las personas de esta serie aún no están vinculadas en el sistema.</span>';
+            }
+            html += '</div>';
+            extraEl.innerHTML = html;
+        }).catch(() => {
+            const extraEl = document.getElementById(`mv-extra-${v.id_video}`);
+            if (extraEl) extraEl.innerHTML = '';
+        });
 
         detailEl.querySelectorAll('.mv-cat-tag').forEach(tag => {
             tag.addEventListener('click', (e) => {
@@ -945,11 +990,7 @@ async function mostrarEpisodios(idSerie, temporada, titulo) {
         });
 
         document.getElementById(`mv-play-${v.id_video}`).addEventListener('click', () => {
-            if (v.url_descarga) {
-                window.open(v.url_descarga, '_blank');
-            } else {
-                alert('Este video no tiene URL de reproducción configurada.');
-            }
+            abrirReproductor(v);
         });
     }
 
@@ -1443,5 +1484,187 @@ async function mostrarEpisodios(idSerie, temporada, titulo) {
             buscarDesdeHeader();
         }
     });
-    
+
+    // ============================================
+    // REPRODUCTOR SIMULADOR
+    // ============================================
+    async function abrirReproductor(video) {
+        let idiomas = [];
+        try {
+            const res = await fetch(`/api/video/${video.id_video}/idiomas`, {
+                headers: { 'Authorization': `Bearer ${token}` }
+            });
+            const data = await res.json();
+            idiomas = data.idiomas || [];
+        } catch(e) {}
+
+        if (idiomas.length === 0) {
+            idiomas = [{ lenguaje: 'Español', tipo: 'ORIGINAL' }];
+        }
+
+        const duracionSeg = (video.duracion || 90) * 60;
+        let progreso = 0;
+        let reproduciendo = false;
+        let intervalo = null;
+        let idiomaActual = idiomas[0];
+        let menuIdiomasVisible = false;
+
+        const overlay = document.createElement('div');
+        overlay.id = 'reproductorOverlay';
+        overlay.style.cssText = `
+            position:fixed; inset:0; background:#000; z-index:9999;
+            display:flex; flex-direction:column; justify-content:space-between;
+            font-family:'Roboto',sans-serif;
+        `;
+
+        function formatTiempo(seg) {
+            const m = Math.floor(seg / 60);
+            const s = Math.floor(seg % 60);
+            return `${String(m).padStart(2,'0')}:${String(s).padStart(2,'0')}`;
+        }
+
+        function renderControles() {
+            const pct = duracionSeg > 0 ? (progreso / duracionSeg) * 100 : 0;
+            overlay.innerHTML = `
+                <div style="padding:20px 24px;">
+                    <button id="rp-volver" style="background:transparent;border:none;color:white;font-size:28px;cursor:pointer;line-height:1;">&#8592;</button>
+                </div>
+                <div style="flex:1;display:flex;align-items:center;justify-content:center;">
+                    <div style="color:#333;font-size:13px;text-align:center;user-select:none;">
+                        ${video.titulo || ''}
+                    </div>
+                </div>
+                <div style="padding:12px 24px 28px; background:linear-gradient(transparent,rgba(0,0,0,0.85));">
+                    <div style="margin-bottom:10px;">
+                        <div id="rp-barra-bg" style="width:100%;height:4px;background:#444;border-radius:2px;cursor:pointer;position:relative;">
+                            <div id="rp-barra-fill" style="width:${pct}%;height:100%;background:#00FF9D;border-radius:2px;transition:width 0.5s linear;"></div>
+                            <div style="position:absolute;top:50%;left:${pct}%;transform:translate(-50%,-50%);width:12px;height:12px;background:#00FF9D;border-radius:50%;"></div>
+                        </div>
+                        <div style="display:flex;justify-content:space-between;margin-top:4px;font-size:11px;color:#aaa;">
+                            <span id="rp-tiempo-actual">${formatTiempo(progreso)}</span>
+                            <span>${formatTiempo(duracionSeg)}</span>
+                        </div>
+                    </div>
+                    <div style="display:grid;grid-template-columns:1fr auto 1fr;align-items:center;">
+                        <div></div>
+                        <button id="rp-play" style="background:transparent;border:none;color:white;font-size:36px;cursor:pointer;width:48px;height:48px;display:flex;align-items:center;justify-content:center;">
+                            ${reproduciendo ? '⏸' : '▶'}
+                        </button>
+                        <div style="display:flex;justify-content:flex-end;position:relative;">
+                            <button id="rp-idioma-btn" style="background:rgba(255,255,255,0.12);border:1px solid rgba(255,255,255,0.25);color:white;padding:7px 16px;border-radius:6px;cursor:pointer;font-size:13px;display:flex;align-items:center;gap:6px;">
+                                <span style="font-size:16px;"></span>
+                                <span id="rp-idioma-label">${idiomaActual.lenguaje}</span>
+                                <span style="font-size:10px;color:#aaa;">${idiomaActual.tipo}</span>
+                                <span style="font-size:10px;">&#9660;</span>
+                            </button>
+                            <div id="rp-idioma-menu" style="display:${menuIdiomasVisible?'block':'none'};position:absolute;bottom:52px;right:0;background:#1a1a1a;border:1px solid #333;border-radius:8px;min-width:180px;overflow:hidden;z-index:10;">
+                                ${idiomas.map(i => `
+                                    <div class="rp-idioma-opcion" data-lenguaje="${i.lenguaje}" data-tipo="${i.tipo}"
+                                         style="padding:10px 16px;cursor:pointer;display:flex;justify-content:space-between;align-items:center;
+                                                background:${i.lenguaje===idiomaActual.lenguaje&&i.tipo===idiomaActual.tipo?'#2a2a2a':'transparent'};">
+                                        <span style="color:white;font-size:13px;">${i.lenguaje}</span>
+                                        <span style="color:#888;font-size:11px;background:#333;padding:2px 6px;border-radius:3px;">${i.tipo}</span>
+                                    </div>
+                                `).join('')}
+                            </div>
+                        </div>
+                    </div>
+                </div>
+            `;
+
+            document.getElementById('rp-volver').addEventListener('click', cerrarReproductor);
+
+            document.getElementById('rp-play').addEventListener('click', () => {
+                reproduciendo = !reproduciendo;
+                if (reproduciendo) {
+                    intervalo = setInterval(() => {
+                        if (progreso < duracionSeg) {
+                            progreso += 1;
+                            document.getElementById('rp-tiempo-actual').textContent = formatTiempo(progreso);
+                            const p = (progreso / duracionSeg) * 100;
+                            const fill = document.getElementById('rp-barra-fill');
+                            if (fill) fill.style.width = p + '%';
+                        } else {
+                            clearInterval(intervalo);
+                            reproduciendo = false;
+                        }
+                    }, 1000);
+                } else {
+                    clearInterval(intervalo);
+                }
+                document.getElementById('rp-play').innerHTML = reproduciendo ? '⏸' : '▶';
+            });
+
+            document.getElementById('rp-barra-bg').addEventListener('click', (e) => {
+                const rect = e.currentTarget.getBoundingClientRect();
+                const pct = (e.clientX - rect.left) / rect.width;
+                progreso = Math.floor(pct * duracionSeg);
+                renderControles();
+            });
+
+            document.getElementById('rp-idioma-btn').addEventListener('click', (e) => {
+                e.stopPropagation();
+                menuIdiomasVisible = !menuIdiomasVisible;
+                document.getElementById('rp-idioma-menu').style.display = menuIdiomasVisible ? 'block' : 'none';
+            });
+
+            document.querySelectorAll('.rp-idioma-opcion').forEach(opcion => {
+                opcion.addEventListener('mouseenter', () => opcion.style.background = '#2a2a2a');
+                opcion.addEventListener('mouseleave', () => {
+                    if (opcion.dataset.lenguaje === idiomaActual.lenguaje && opcion.dataset.tipo === idiomaActual.tipo) {
+                        opcion.style.background = '#2a2a2a';
+                    } else {
+                        opcion.style.background = 'transparent';
+                    }
+                });
+                opcion.addEventListener('click', () => {
+                    idiomaActual = { lenguaje: opcion.dataset.lenguaje, tipo: opcion.dataset.tipo };
+                    menuIdiomasVisible = false;
+                    renderControles();
+                    if (reproduciendo && intervalo) {
+                        intervalo = setInterval(() => {
+                            if (progreso < duracionSeg) {
+                                progreso += 1;
+                                const tiempoEl = document.getElementById('rp-tiempo-actual');
+                                if (tiempoEl) tiempoEl.textContent = formatTiempo(progreso);
+                                const p = (progreso / duracionSeg) * 100;
+                                const fill = document.getElementById('rp-barra-fill');
+                                if (fill) fill.style.width = p + '%';
+                            } else {
+                                clearInterval(intervalo);
+                                reproduciendo = false;
+                            }
+                        }, 1000);
+                    }
+                });
+            });
+        }
+
+        function cerrarReproductor() {
+            clearInterval(intervalo);
+            overlay.remove();
+            document.removeEventListener('keydown', teclaHandler);
+        }
+
+        function teclaHandler(e) {
+            if (e.key === 'Escape') cerrarReproductor();
+            if (e.key === ' ') {
+                e.preventDefault();
+                document.getElementById('rp-play')?.click();
+            }
+        }
+
+        document.addEventListener('keydown', teclaHandler);
+        document.addEventListener('click', (e) => {
+            if (menuIdiomasVisible && !e.target.closest('#rp-idioma-btn') && !e.target.closest('#rp-idioma-menu')) {
+                menuIdiomasVisible = false;
+                const menu = document.getElementById('rp-idioma-menu');
+                if (menu) menu.style.display = 'none';
+            }
+        }, true);
+
+        document.body.appendChild(overlay);
+        renderControles();
+    }
+
 });

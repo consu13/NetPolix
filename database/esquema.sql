@@ -574,7 +574,7 @@ ON DELETE CASCADE
 GO
 ALTER TABLE [dbo].[calificacion]  WITH CHECK ADD CHECK  (([valor]='MALA' OR [valor]='REGULAR' OR [valor]='BUENA' OR [valor]='EXCELENTE'))
 GO
-ALTER TABLE [dbo].[serie_persona]  WITH CHECK ADD  CONSTRAINT [CK_serie_persona_tipo] CHECK  (([tipo]='INVITADO' OR [tipo]='PRINCIPAL'))
+ALTER TABLE [dbo].[serie_persona]  WITH CHECK ADD  CONSTRAINT [CK_serie_persona_tipo] CHECK  (([tipo]='ACTOR' OR [tipo]='DIRECTOR' OR [tipo]='PRODUCTOR' OR [tipo]='INVITADO'))
 GO
 ALTER TABLE [dbo].[serie_persona] CHECK CONSTRAINT [CK_serie_persona_tipo]
 GO

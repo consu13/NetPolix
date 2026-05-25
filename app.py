@@ -885,6 +885,69 @@ class EpisodiosSerie(Resource):
         conn.close()
         return {'episodios': [{'id': r[0], 'titulo': r[1], 'duracion': r[2]} for r in rows]}
 
+@api.route('/api/video/<int:id_video>/idiomas')
+class VideoIdiomas(Resource):
+    @token_required(roles=['CLIENTE'])
+    def get(self, id_video):
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT i.lenguaje, vi.tipo
+            FROM video_idioma vi
+            JOIN idioma i ON vi.id_idioma = i.id_idioma
+            WHERE vi.id_video = ?
+            ORDER BY vi.tipo, i.lenguaje
+        """, (id_video,))
+        rows = cursor.fetchall()
+        conn.close()
+        return {'idiomas': [{'lenguaje': r[0], 'tipo': r[1]} for r in rows]}
+
+@api.route('/api/video/<int:id_video>/personas-idiomas')
+class VideoPersonasIdiomas(Resource):
+    @token_required(roles=['CLIENTE'])
+    def get(self, id_video):
+        conn = get_db()
+        cursor = conn.cursor()
+
+        cursor.execute("SELECT TOP 1 id_serie FROM serie_video WHERE id_video = ?", (id_video,))
+        row_serie = cursor.fetchone()
+        es_serie = row_serie is not None
+
+        if es_serie:
+            cursor.execute("""
+                SELECT p.nombre, sp.tipo
+                FROM serie_persona sp
+                JOIN persona p ON sp.id_persona = p.id_persona
+                WHERE sp.id_serie = ?
+                ORDER BY sp.tipo, p.nombre
+            """, (row_serie[0],))
+        else:
+            cursor.execute("""
+                SELECT p.nombre, vp.rol
+                FROM video_persona vp
+                JOIN persona p ON vp.id_persona = p.id_persona
+                WHERE vp.id_video = ?
+                ORDER BY vp.rol, p.nombre
+            """, (id_video,))
+        personas = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT i.lenguaje, vi.tipo
+            FROM video_idioma vi
+            JOIN idioma i ON vi.id_idioma = i.id_idioma
+            WHERE vi.id_video = ?
+            ORDER BY vi.tipo, i.lenguaje
+        """, (id_video,))
+        idiomas = cursor.fetchall()
+        conn.close()
+        return {
+            'es_serie': es_serie,
+            'directores': [r[0] for r in personas if r[1] == 'DIRECTOR'],
+            'actores': [r[0] for r in personas if r[1] == 'ACTOR'],
+            'productores': [r[0] for r in personas if r[1] == 'PRODUCTOR'],
+            'idiomas': [{'lenguaje': r[0], 'tipo': r[1]} for r in idiomas]
+        }
+
 @api.route('/api/mis-videos')
 class MisVideos(Resource):
     @token_required(roles=['CLIENTE'])
@@ -1268,6 +1331,52 @@ class AdminVideoPersonas(Resource):
 
             conn.commit()
             return {'mensaje': 'Personas asignadas exitosamente'}
+        except Exception as e:
+            conn.rollback()
+            return {'error': str(e)}, 500
+        finally:
+            conn.close()
+
+@api.route('/admin/series/<int:id_serie>/personas')
+class AdminSeriePersonas(Resource):
+    @token_required(roles=['ADMINISTRADOR'])
+    def get(self, id_serie):
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT p.id_persona, p.nombre, sp.tipo
+            FROM serie_persona sp
+            JOIN persona p ON sp.id_persona = p.id_persona
+            WHERE sp.id_serie = ?
+            ORDER BY sp.tipo, p.nombre
+        """, (id_serie,))
+        rows = cursor.fetchall()
+        conn.close()
+        return {'personas': [{'id': r[0], 'nombre': r[1], 'tipo': r[2]} for r in rows]}
+
+    @token_required(roles=['ADMINISTRADOR'])
+    @api.expect(api.model('AsignarPersonasSerie', {'personas': fields.List(fields.Nested(api.model('PersonaSerieAsignar', {'nombre': fields.String, 'tipo': fields.String(enum=['ACTOR', 'DIRECTOR', 'PRODUCTOR', 'INVITADO'])})))}))
+    def post(self, id_serie):
+        data = request.json
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM serie_persona WHERE id_serie = ?", (id_serie,))
+            for persona in data.get('personas', []):
+                if persona['tipo'] not in ('ACTOR', 'DIRECTOR', 'PRODUCTOR', 'INVITADO'):
+                    return {'error': f'Tipo "{persona["tipo"]}" no válido. Use: ACTOR, DIRECTOR, PRODUCTOR o INVITADO'}, 400
+                cursor.execute("SELECT id_persona FROM persona WHERE nombre = ?", (persona['nombre'],))
+                row = cursor.fetchone()
+                if row:
+                    id_persona = row[0]
+                else:
+                    cursor.execute("INSERT INTO persona (nombre) VALUES (?)", (persona['nombre'],))
+                    cursor.execute("SELECT @@IDENTITY")
+                    id_persona = int(cursor.fetchone()[0])
+                cursor.execute("INSERT INTO serie_persona (id_serie, id_persona, tipo) VALUES (?, ?, ?)",
+                               (id_serie, id_persona, persona['tipo']))
+            conn.commit()
+            return {'mensaje': 'Personas asignadas a la serie exitosamente'}
         except Exception as e:
             conn.rollback()
             return {'error': str(e)}, 500
