@@ -193,6 +193,47 @@ body {
     min-height: 20px;
 }
 
+.edad-verificacion {
+    background: #1e1e1c;
+    border: 1px solid #3a3a38;
+    border-radius: 8px;
+    padding: 12px 14px;
+    margin: 12px 0;
+}
+
+.edad-verificacion label {
+    display: block;
+    font-size: 12px;
+    color: #aaa;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+    margin-bottom: 4px;
+}
+
+.edad-verificacion small {
+    display: block;
+    font-size: 11px;
+    color: #666;
+    margin-bottom: 8px;
+}
+
+.edad-verificacion input[type="date"] {
+    width: 100%;
+    padding: 8px 10px;
+    background: #2c2c2a;
+    border: 1px solid #3a3a38;
+    border-radius: 6px;
+    color: #e0e0e0;
+    font-size: 14px;
+    font-family: inherit;
+    color-scheme: dark;
+}
+
+.edad-verificacion input[type="date"]:focus {
+    outline: none;
+    border-color: #00FF9D;
+}
+
 .btn-confirmar {
     width: 100%;
     padding: 14px;

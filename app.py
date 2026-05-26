@@ -76,17 +76,20 @@ login_model = api.model('Login', {
 })
 
 
+_persona_video_model = api.model('PersonaVideo', {
+    'nombre': fields.String(required=True),
+    'rol': fields.String(required=True, enum=['ACTOR', 'DIRECTOR', 'PRODUCTOR'])
+})
+
 video_model = api.model('Video', {
     'isan': fields.String(required=True),
     'titulo_original': fields.String(required=True),
     'anio': fields.Integer(required=True),
     'duracion': fields.Integer(required=True),
     'descripcion': fields.String,
-    'director': fields.String,
-    'actores': fields.String,
-    'url_descarga': fields.String,
-    'categorias': fields.List(fields.String),
-    'id_clasificacion': fields.String(description='G, PG, PG-13, R o NC-17')
+    'categorias': fields.List(fields.String, description='Máximo 3'),
+    'id_clasificacion': fields.String(description='G, PG, PG-13, R o NC-17'),
+    'personas': fields.List(fields.Nested(_persona_video_model))
 })
 
 calificacion_model = api.model('Calificacion', {
@@ -98,11 +101,6 @@ perfil_model = api.model('Perfil', {
     'nickname': fields.String,
     'cedula': fields.String,
     'email': fields.String
-})
-
-referido_model = api.model('Referido', {
-    'nombre_amigo': fields.String(required=True),
-    'email_amigo': fields.String(required=True)
 })
 
 categoria_model = api.model('Categoria', {
@@ -242,7 +240,9 @@ class Pagar(Resource):
     def post(self):
         data = request.json
         items = data.get('items', [])
-        metodo_pago = data.get('metodo_pago', 'PUNTOS')  # 'PUNTOS' o 'TARJETA'
+        metodo_pago = data.get('metodo_pago', 'PUNTOS')  # PUNTOS | TARJETA | SALDO
+        if metodo_pago not in ('PUNTOS', 'TARJETA', 'SALDO'):
+            return {'error': 'Método de pago inválido. Use PUNTOS, TARJETA o SALDO'}, 400
         id_cliente = request.user.get('id')
         
         conn = get_db()
@@ -289,7 +289,7 @@ class Pagar(Resource):
                 puntos_necesarios = 20 * len(items)
                 if puntos < puntos_necesarios:
                     return {'error': f'Puntos insuficientes. Necesitas {puntos_necesarios} puntos y tienes {puntos}'}, 400
-            elif metodo_pago != 'TARJETA':
+            elif metodo_pago == 'SALDO':
                 if saldo < total:
                     return {'error': f'Saldo insuficiente. Necesitas ${total:.2f} y tienes ${saldo:.2f}'}, 400
 
@@ -327,13 +327,12 @@ class Pagar(Resource):
                 if metodo_pago != 'PUNTOS':
                     puntos_ganados += pts
 
-            # Actualizar cliente según método de pago
             if metodo_pago == 'PUNTOS':
                 cursor.execute("""
                     UPDATE cliente SET puntos = puntos - ?
                     WHERE id_cliente = ?
                 """, (20 * len(items), id_cliente))
-            elif metodo_pago != 'TARJETA':
+            elif metodo_pago == 'SALDO':
                 cursor.execute("""
                     UPDATE cliente SET saldo = saldo - ?, puntos = puntos + ?
                     WHERE id_cliente = ?
@@ -601,7 +600,6 @@ class CalificarVideo(Resource):
     @token_required(roles=['CLIENTE'])
     @api.expect(calificacion_model)
     def post(self, id_video):
-        print(">>> ENTRANDO A CalificarVideo NUEVA VERSION")
         data = request.json
         id_cliente = request.user.get('id')
         valor = data.get('calificacion', '').upper()
@@ -613,7 +611,7 @@ class CalificarVideo(Resource):
         cursor = conn.cursor()
         try:
             cursor.execute("""
-                SELECT id_calificacion FROM calificacion 
+                SELECT id_calificacion FROM calificacion
                 WHERE id_video = ? AND id_cliente = ?
             """, (id_video, id_cliente))
             existe = cursor.fetchone()
@@ -630,11 +628,8 @@ class CalificarVideo(Resource):
                 """, (id_video, id_cliente, valor))
 
             conn.commit()
-            print(">>> COMMIT OK")
 
             cursor2 = conn.cursor()
-            print(">>> CURSOR2 CREADO")
-
             cursor2.execute("""
                 SELECT AVG(CASE valor
                     WHEN 'EXCELENTE' THEN 4.0
@@ -645,18 +640,12 @@ class CalificarVideo(Resource):
                 FROM calificacion
                 WHERE id_video = ?
             """, (id_video,))
-            print(">>> QUERY EJECUTADA")
 
             row = cursor2.fetchone()
-            print(">>> ROW:", row)
-
             promedio = round(float(row[0]), 2) if row and row[0] else 0.0
-            print(">>> PROMEDIO:", promedio)
-
             return {'mensaje': 'Calificación registrada', 'promedio': promedio}, 200
         except Exception as e:
             conn.rollback()
-            print(f"ERROR calificar: {str(e)}")
             return {'error': str(e)}, 500
         finally:
             conn.close()
@@ -714,14 +703,9 @@ def verificar_restriccion_edad(clasificacion, fecha_nacimiento_str, hash_guardad
         return False, f'Debes tener al menos {edad_minima} años para acceder a contenido clasificación {clasificacion}.'
     return True, None
 
-alquiler_model = api.model('Alquiler', {
+transaccion_video_model = api.model('TransaccionVideo', {
     'id_video': fields.Integer(required=True),
-    'fecha_nacimiento': fields.String(description='Requerida para videos clasificación PG-13, R o NC-17 (formato YYYY-MM-DD)')
-})
-
-compra_model = api.model('Compra', {
-    'id_video': fields.Integer(required=True),
-    'fecha_nacimiento': fields.String(description='Requerida para videos clasificación PG-13, R o NC-17 (formato YYYY-MM-DD)')
+    'fecha_nacimiento': fields.String(description='Requerida para clasificación PG-13, R o NC-17 (YYYY-MM-DD)')
 })
 
 @api.route('/api/inicio')
@@ -764,7 +748,7 @@ class Inicio(Resource):
 @api.route('/api/alquilar')
 class Alquilar(Resource):
     @token_required(roles=['CLIENTE'])
-    @api.expect(alquiler_model)
+    @api.expect(transaccion_video_model)
     def post(self):
         data = request.json
         id_cliente = request.user.get('id')
@@ -824,7 +808,7 @@ class Alquilar(Resource):
 @api.route('/api/comprar')
 class Comprar(Resource):
     @token_required(roles=['CLIENTE'])
-    @api.expect(compra_model)
+    @api.expect(transaccion_video_model)
     def post(self):
         data = request.json
         id_cliente = request.user.get('id')
@@ -1101,14 +1085,15 @@ class MisPuntos(Resource):
         }
 
 @api.route('/api/categorias-cliente')
-class CategoriasCliente(Resource):  
-        def get(self):
-            conn = get_db()
-            cursor = conn.cursor()
-            cursor.execute("SELECT id_categoria, nombre FROM categoria ORDER BY nombre")
-            rows = cursor.fetchall()
-            conn.close()
-            return {'categorias': [{'id': r[0], 'nombre': r[1]} for r in rows]}
+class CategoriasCliente(Resource):
+    @token_required(roles=['CLIENTE'])
+    def get(self):
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id_categoria, nombre FROM categoria ORDER BY nombre")
+        rows = cursor.fetchall()
+        conn.close()
+        return {'categorias': [{'id': r[0], 'nombre': r[1]} for r in rows]}
 
 @api.route('/api/canjear-puntos')
 class CanjearPuntos(Resource):
@@ -1130,16 +1115,19 @@ class CanjearPuntos(Resource):
         conn.close()
         return {'error': 'Necesitas 20 puntos para canjear un video gratis'}, 400
 
-    
+@api.route('/api/referidos')
+class Referidos(Resource):
     @token_required(roles=['CLIENTE'])
     def get(self):
         conn = get_db()
         cursor = conn.cursor()
-        cursor.execute("SELECT nombre_amigo, email_amigo, estado FROM referido WHERE id_cliente = ?", (request.user.get('id'),))
+        cursor.execute(
+            "SELECT nombre_amigo, email_amigo, estado FROM referido WHERE id_cliente = ?",
+            (request.user.get('id'),)
+        )
         rows = cursor.fetchall()
         conn.close()
-        referidos = [{'nombre': r[0], 'email': r[1], 'estado': r[2]} for r in rows]
-        return {'referidos': referidos}
+        return {'referidos': [{'nombre': r[0], 'email': r[1], 'estado': r[2]} for r in rows]}
 
 # ============================================
 # ENDPOINTS ADMINISTRADOR

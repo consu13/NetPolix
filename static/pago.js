@@ -194,14 +194,19 @@ document.getElementById('btnConfirmar').addEventListener('click', async () => {
         };
     });
 
+    const fechaNac = document.getElementById('fechaNacimientoPago').value || null;
+
     try {
+        const body = { items, metodo_pago: 'PUNTOS' };
+        if (fechaNac) body.fecha_nacimiento = fechaNac;
+
         const res = await fetch('/api/pagar', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ items, metodo_pago: 'PUNTOS' })
+            body: JSON.stringify(body)
         });
         const data = await res.json();
 
@@ -362,14 +367,19 @@ document.getElementById('btnPagarModal').addEventListener('click', async () => {
         };
     });
 
+    const fechaNacModal = document.getElementById('fechaNacimientoPago').value || null;
+
     try {
+        const body = { items, metodo_pago: 'TARJETA' };
+        if (fechaNacModal) body.fecha_nacimiento = fechaNacModal;
+
         const res = await fetch('/api/pagar', {
             method: 'POST',
             headers: {
                 'Content-Type': 'application/json',
                 'Authorization': `Bearer ${token}`
             },
-            body: JSON.stringify({ items, metodo_pago: 'TARJETA' })
+            body: JSON.stringify(body)
         });
         const data = await res.json();
 
