@@ -32,9 +32,14 @@
                 localStorage.setItem('cadula', data.cedula);
                 messageDiv.style.color = '#4caf50';
                 messageDiv.textContent = 'Inicio de sesión exitoso. Redirigiendo...';
-                // Redirigir según el rol (más adelante cambiaremos)
                 setTimeout(() => {
-                    window.location.href = '/dashboard';
+                    if (data.rol === 'GERENTE') {
+                        window.location.href = '/gerente';
+                    } else if (data.rol === 'ADMINISTRADOR') {
+                        window.location.href = '/admin';
+                    } else {
+                        window.location.href = '/dashboard';
+                    }
                 }, 1000);
             } else {
                 messageDiv.textContent = data.error || 'Error al iniciar sesión';

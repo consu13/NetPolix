@@ -1,0 +1,593 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIC-NetPOLIx - Panel Administrador</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Roboto', sans-serif; background: #0f0f1a; color: #e0e0e0; display: flex; height: 100vh; overflow: hidden; }
+
+        /* SIDEBAR */
+        .sidebar { width: 220px; background: #1a1a2e; display: flex; flex-direction: column; border-right: 2px solid #e50914; flex-shrink: 0; }
+        .sidebar-logo { padding: 20px 16px; border-bottom: 1px solid #2a2a3e; }
+        .sidebar-logo h2 { font-size: 1rem; color: #fff; }
+        .sidebar-logo h2 span { color: #e50914; }
+        .sidebar-logo small { color: #888; font-size: 0.75rem; display: block; margin-top: 4px; }
+        nav { flex: 1; padding: 12px 0; overflow-y: auto; }
+        .nav-item { display: block; padding: 12px 20px; color: #aaa; cursor: pointer; font-size: 0.9rem; border-left: 3px solid transparent; transition: all 0.2s; text-decoration: none; }
+        .nav-item:hover { color: #fff; background: #16162a; }
+        .nav-item.active { color: #fff; background: #16162a; border-left-color: #e50914; }
+        .nav-section { padding: 12px 20px 4px; font-size: 0.7rem; color: #555; text-transform: uppercase; letter-spacing: 1px; }
+        .sidebar-footer { padding: 16px; border-top: 1px solid #2a2a3e; }
+        .sidebar-user { font-size: 0.8rem; color: #aaa; margin-bottom: 8px; }
+        .btn-logout { width: 100%; background: #e50914; color: #fff; border: none; padding: 8px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+
+        /* MAIN */
+        .main { flex: 1; display: flex; flex-direction: column; overflow: hidden; }
+        .topbar { background: #1a1a2e; padding: 14px 24px; border-bottom: 1px solid #2a2a3e; display: flex; align-items: center; justify-content: space-between; }
+        .topbar h1 { font-size: 1.1rem; color: #fff; }
+        .content { flex: 1; overflow-y: auto; padding: 24px; }
+
+        /* SECTIONS */
+        .section { display: none; }
+        .section.active { display: block; }
+
+        /* TABLE */
+        .table-header { display: flex; justify-content: space-between; align-items: center; margin-bottom: 16px; }
+        .table-header h2 { font-size: 1rem; color: #fff; }
+        .btn-primary { background: #e50914; color: #fff; border: none; padding: 9px 18px; border-radius: 7px; cursor: pointer; font-size: 0.85rem; font-weight: 500; }
+        .btn-primary:hover { background: #b0070f; }
+        .btn-sm { padding: 5px 12px; font-size: 0.78rem; border-radius: 5px; border: none; cursor: pointer; font-weight: 500; }
+        .btn-edit { background: #2471a3; color: #fff; }
+        .btn-delete { background: #922b21; color: #fff; }
+        .btn-secondary { background: #2a2a3e; color: #ccc; }
+        table { width: 100%; border-collapse: collapse; background: #1a1a2e; border-radius: 10px; overflow: hidden; }
+        th { background: #16162a; padding: 12px 14px; text-align: left; font-size: 0.78rem; color: #888; text-transform: uppercase; letter-spacing: 0.5px; }
+        td { padding: 11px 14px; font-size: 0.88rem; border-bottom: 1px solid #16162a; }
+        tr:last-child td { border-bottom: none; }
+        tr:hover td { background: #1e1e32; }
+        .badge { display: inline-block; padding: 3px 9px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
+        .badge-admin { background: #1a3a5c; color: #5dade2; }
+        .badge-gerente { background: #1e4d2b; color: #58d68d; }
+        .empty-msg { text-align: center; color: #555; padding: 32px; }
+
+        /* MODAL */
+        .modal-overlay { display: none; position: fixed; inset: 0; background: rgba(0,0,0,0.7); z-index: 100; align-items: center; justify-content: center; }
+        .modal-overlay.open { display: flex; }
+        .modal { background: #1a1a2e; border-radius: 12px; padding: 28px; width: 480px; max-height: 85vh; overflow-y: auto; border: 1px solid #2a2a3e; }
+        .modal h3 { font-size: 1rem; color: #fff; margin-bottom: 20px; border-bottom: 1px solid #2a2a3e; padding-bottom: 10px; }
+        .form-group { margin-bottom: 14px; }
+        .form-group label { display: block; font-size: 0.8rem; color: #aaa; margin-bottom: 5px; }
+        .form-group input, .form-group select, .form-group textarea {
+            width: 100%; padding: 9px 12px; background: #0f0f1a; border: 1px solid #2a2a3e;
+            border-radius: 7px; color: #e0e0e0; font-size: 0.88rem; font-family: inherit;
+        }
+        .form-group input:focus, .form-group select:focus { outline: none; border-color: #e50914; }
+        .modal-actions { display: flex; gap: 10px; justify-content: flex-end; margin-top: 20px; }
+        .btn-cancel { background: #2a2a3e; color: #ccc; border: none; padding: 9px 18px; border-radius: 7px; cursor: pointer; }
+        .error-toast { color: #e74c3c; font-size: 0.82rem; margin-top: 8px; }
+        .success-toast { color: #58d68d; font-size: 0.82rem; margin-top: 8px; }
+        .tag-list { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 6px; }
+        .tag { background: #2a2a3e; padding: 3px 10px; border-radius: 20px; font-size: 0.78rem; display: flex; align-items: center; gap: 5px; }
+        .tag button { background: none; border: none; color: #e50914; cursor: pointer; font-size: 0.9rem; padding: 0; line-height: 1; }
+    </style>
+</head>
+<body>
+
+<!-- SIDEBAR -->
+<aside class="sidebar">
+    <div class="sidebar-logo">
+        <h2>SIC-<span>NetPOLIx</span></h2>
+        <small>Panel Administrador</small>
+    </div>
+    <nav>
+        <div class="nav-section">Contenido</div>
+        <a class="nav-item active" onclick="showSection('videos')">Videos</a>
+        <a class="nav-item" onclick="showSection('series')">Series</a>
+        <a class="nav-item" onclick="showSection('personas')">Personas</a>
+        <div class="nav-section">Catálogos</div>
+        <a class="nav-item" onclick="showSection('categorias')">Categorías</a>
+        <a class="nav-item" onclick="showSection('idiomas')">Idiomas</a>
+        <a class="nav-item" onclick="showSection('clasificaciones')">Clasificaciones</a>
+        <div class="nav-section">Sistema</div>
+        <a class="nav-item" onclick="showSection('usuarios')">Usuarios del sistema</a>
+    </nav>
+    <div class="sidebar-footer">
+        <div class="sidebar-user" id="sidebarUser"></div>
+        <button class="btn-logout" onclick="cerrarSesion()">Cerrar sesión</button>
+    </div>
+</aside>
+
+<!-- MAIN -->
+<div class="main">
+    <div class="topbar">
+        <h1 id="topbarTitle">Videos</h1>
+    </div>
+    <div class="content">
+
+        <!-- VIDEOS -->
+        <div class="section active" id="sec-videos">
+            <div class="table-header">
+                <h2>Lista de Videos</h2>
+                <button class="btn-primary" onclick="abrirModalVideo()">+ Nuevo video</button>
+            </div>
+            <table>
+                <thead><tr><th>ID</th><th>ISAN</th><th>Título</th><th>Año</th><th>Duración</th><th>Clasificación</th><th>Acciones</th></tr></thead>
+                <tbody id="tbVideos"><tr><td colspan="7" class="empty-msg">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- SERIES -->
+        <div class="section" id="sec-series">
+            <div class="table-header">
+                <h2>Lista de Series</h2>
+            </div>
+            <table>
+                <thead><tr><th>ID</th><th>Título</th><th>Temporada</th><th>Episodios</th><th>Personas</th></tr></thead>
+                <tbody id="tbSeries"><tr><td colspan="5" class="empty-msg">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- PERSONAS -->
+        <div class="section" id="sec-personas">
+            <div class="table-header">
+                <h2>Personas</h2>
+                <button class="btn-primary" onclick="abrirModalPersona()">+ Nueva persona</button>
+            </div>
+            <table>
+                <thead><tr><th>ID</th><th>Nombre</th><th>Fecha Nacimiento</th></tr></thead>
+                <tbody id="tbPersonas"><tr><td colspan="3" class="empty-msg">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- CATEGORÍAS -->
+        <div class="section" id="sec-categorias">
+            <div class="table-header">
+                <h2>Categorías</h2>
+                <button class="btn-primary" onclick="abrirModalCategoria()">+ Nueva categoría</button>
+            </div>
+            <table>
+                <thead><tr><th>ID</th><th>Nombre</th></tr></thead>
+                <tbody id="tbCategorias"><tr><td colspan="2" class="empty-msg">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- IDIOMAS -->
+        <div class="section" id="sec-idiomas">
+            <div class="table-header">
+                <h2>Idiomas</h2>
+                <button class="btn-primary" onclick="abrirModalIdioma()">+ Nuevo idioma</button>
+            </div>
+            <table>
+                <thead><tr><th>ID</th><th>Lenguaje</th></tr></thead>
+                <tbody id="tbIdiomas"><tr><td colspan="2" class="empty-msg">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- CLASIFICACIONES -->
+        <div class="section" id="sec-clasificaciones">
+            <div class="table-header">
+                <h2>Clasificaciones</h2>
+                <button class="btn-primary" onclick="abrirModalClasificacion()">+ Nueva clasificación</button>
+            </div>
+            <table>
+                <thead><tr><th>Tipo</th><th>Descripción</th><th>Acciones</th></tr></thead>
+                <tbody id="tbClasificaciones"><tr><td colspan="3" class="empty-msg">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+
+        <!-- USUARIOS -->
+        <div class="section" id="sec-usuarios">
+            <div class="table-header">
+                <h2>Usuarios del Sistema</h2>
+                <button class="btn-primary" onclick="abrirModalUsuario()">+ Nuevo usuario</button>
+            </div>
+            <table>
+                <thead><tr><th>ID</th><th>Nombre</th><th>Usuario</th><th>Documento</th><th>Rol</th><th>Creación</th><th>Acciones</th></tr></thead>
+                <tbody id="tbUsuarios"><tr><td colspan="7" class="empty-msg">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+
+    </div>
+</div>
+
+<!-- MODAL VIDEO -->
+<div class="modal-overlay" id="modalVideo">
+    <div class="modal">
+        <h3 id="modalVideoTitulo">Nuevo Video</h3>
+        <input type="hidden" id="videoId">
+        <div class="form-group"><label>ISAN</label><input id="vIsan" placeholder="Ej: ISAN-0001"></div>
+        <div class="form-group"><label>Título original</label><input id="vTitulo"></div>
+        <div class="form-group"><label>Año</label><input id="vAnio" type="number" min="1900" max="2100"></div>
+        <div class="form-group"><label>Duración (minutos)</label><input id="vDuracion" type="number" min="1"></div>
+        <div class="form-group"><label>Descripción</label><textarea id="vDescripcion" rows="2"></textarea></div>
+        <div class="form-group"><label>Clasificación</label>
+            <select id="vClasificacion">
+                <option value="">Sin clasificación</option>
+                <option>G</option><option>PG</option><option>PG-13</option><option>R</option><option>NC-17</option>
+            </select>
+        </div>
+        <div id="videoMsg" class="error-toast"></div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="cerrarModal('modalVideo')">Cancelar</button>
+            <button class="btn-primary" onclick="guardarVideo()">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL PERSONA -->
+<div class="modal-overlay" id="modalPersona">
+    <div class="modal">
+        <h3>Nueva Persona</h3>
+        <div class="form-group"><label>Nombre completo</label><input id="pNombre"></div>
+        <div class="form-group"><label>Fecha de nacimiento (opcional)</label><input id="pFechaNac" type="date"></div>
+        <div id="personaMsg" class="error-toast"></div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="cerrarModal('modalPersona')">Cancelar</button>
+            <button class="btn-primary" onclick="guardarPersona()">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CATEGORÍA -->
+<div class="modal-overlay" id="modalCategoria">
+    <div class="modal">
+        <h3>Nueva Categoría</h3>
+        <div class="form-group"><label>Nombre</label><input id="catNombre" placeholder="Ej: TERROR"></div>
+        <div id="categoriaMsg" class="error-toast"></div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="cerrarModal('modalCategoria')">Cancelar</button>
+            <button class="btn-primary" onclick="guardarCategoria()">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL IDIOMA -->
+<div class="modal-overlay" id="modalIdioma">
+    <div class="modal">
+        <h3>Nuevo Idioma</h3>
+        <div class="form-group"><label>Lenguaje</label><input id="idiomaLenguaje" placeholder="Ej: Coreano"></div>
+        <div id="idiomaMsg" class="error-toast"></div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="cerrarModal('modalIdioma')">Cancelar</button>
+            <button class="btn-primary" onclick="guardarIdioma()">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL CLASIFICACIÓN -->
+<div class="modal-overlay" id="modalClasificacion">
+    <div class="modal">
+        <h3 id="modalClasifTitulo">Nueva Clasificación</h3>
+        <input type="hidden" id="clasifTipoEdit">
+        <div class="form-group" id="clasifTipoGroup">
+            <label>Tipo</label>
+            <select id="clasifTipo">
+                <option>G</option><option>PG</option><option>PG-13</option><option>R</option><option>NC-17</option>
+            </select>
+        </div>
+        <div class="form-group"><label>Descripción</label><textarea id="clasifDesc" rows="3"></textarea></div>
+        <div id="clasifMsg" class="error-toast"></div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="cerrarModal('modalClasificacion')">Cancelar</button>
+            <button class="btn-primary" onclick="guardarClasificacion()">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL USUARIO -->
+<div class="modal-overlay" id="modalUsuario">
+    <div class="modal">
+        <h3 id="modalUsuarioTitulo">Nuevo Usuario</h3>
+        <input type="hidden" id="usuarioId">
+        <div class="form-group"><label>Nombre completo</label><input id="uNombre"></div>
+        <div class="form-group"><label>Documento</label><input id="uDocumento"></div>
+        <div class="form-group"><label>Nombre de usuario (para login)</label><input id="uNombreUsuario"></div>
+        <div class="form-group" id="uPasswordGroup"><label>Contraseña</label><input id="uPassword" type="password"></div>
+        <div class="form-group"><label>Rol</label>
+            <select id="uRol"><option value="ADMINISTRADOR">ADMINISTRADOR</option><option value="GERENTE">GERENTE</option></select>
+        </div>
+        <div id="usuarioMsg" class="error-toast"></div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="cerrarModal('modalUsuario')">Cancelar</button>
+            <button class="btn-primary" onclick="guardarUsuario()">Guardar</button>
+        </div>
+    </div>
+</div>
+
+<!-- MODAL RESET PASSWORD -->
+<div class="modal-overlay" id="modalReset">
+    <div class="modal">
+        <h3>Restablecer Contraseña</h3>
+        <input type="hidden" id="resetId">
+        <div class="form-group"><label>Nueva contraseña</label><input id="resetPwd" type="password" minlength="6"></div>
+        <div id="resetMsg" class="error-toast"></div>
+        <div class="modal-actions">
+            <button class="btn-cancel" onclick="cerrarModal('modalReset')">Cancelar</button>
+            <button class="btn-primary" onclick="confirmarReset()">Restablecer</button>
+        </div>
+    </div>
+</div>
+
+<script>
+const TOKEN = localStorage.getItem('token');
+const ROL   = localStorage.getItem('rol');
+if (!TOKEN || ROL !== 'ADMINISTRADOR') window.location.href = '/login';
+document.getElementById('sidebarUser').textContent = localStorage.getItem('nombre') || 'Admin';
+
+function cerrarSesion() { localStorage.clear(); window.location.href = '/login'; }
+
+const sectionTitles = { videos:'Videos', series:'Series', personas:'Personas', categorias:'Categorías', idiomas:'Idiomas', clasificaciones:'Clasificaciones', usuarios:'Usuarios del Sistema' };
+function showSection(name) {
+    document.querySelectorAll('.section').forEach(s => s.classList.remove('active'));
+    document.querySelectorAll('.nav-item').forEach(n => n.classList.remove('active'));
+    document.getElementById('sec-' + name).classList.add('active');
+    event.currentTarget.classList.add('active');
+    document.getElementById('topbarTitle').textContent = sectionTitles[name];
+    loaders[name]();
+}
+
+function h(str) { const d = document.createElement('div'); d.textContent = str ?? '—'; return d.innerHTML; }
+function abrirModal(id) { document.getElementById(id).classList.add('open'); }
+function cerrarModal(id) { document.getElementById(id).classList.remove('open'); }
+
+async function api(method, url, body) {
+    const opts = { method, headers: { 'Authorization': 'Bearer ' + TOKEN, 'Content-Type': 'application/json' } };
+    if (body) opts.body = JSON.stringify(body);
+    const r = await fetch(url, opts);
+    return { ok: r.ok, data: await r.json().catch(() => ({})), status: r.status };
+}
+
+/* ===== VIDEOS ===== */
+async function cargarVideos() {
+    const { data } = await api('GET', '/admin/videos');
+    const tb = document.getElementById('tbVideos');
+    const rows = data.videos || [];
+    tb.innerHTML = rows.length ? rows.map(v => `<tr>
+        <td>${h(v.id)}</td><td>${h(v.isan)}</td><td>${h(v.titulo)}</td>
+        <td>${h(v.anio)}</td><td>${h(v.duracion)} min</td><td>${h(v.clasificacion)}</td>
+        <td><button class="btn-sm btn-edit" onclick='editarVideo(${JSON.stringify(v)})'>Editar</button>
+            <button class="btn-sm btn-delete" onclick="eliminarVideo(${v.id})">Eliminar</button></td>
+    </tr>`).join('') : '<tr><td colspan="7" class="empty-msg">Sin videos</td></tr>';
+}
+function abrirModalVideo() {
+    document.getElementById('videoId').value = '';
+    document.getElementById('modalVideoTitulo').textContent = 'Nuevo Video';
+    ['vIsan','vTitulo','vAnio','vDuracion','vDescripcion'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('vClasificacion').value = '';
+    document.getElementById('videoMsg').textContent = '';
+    abrirModal('modalVideo');
+}
+function editarVideo(v) {
+    document.getElementById('videoId').value = v.id;
+    document.getElementById('modalVideoTitulo').textContent = 'Editar Video';
+    document.getElementById('vIsan').value = v.isan || '';
+    document.getElementById('vTitulo').value = v.titulo || '';
+    document.getElementById('vAnio').value = v.anio || '';
+    document.getElementById('vDuracion').value = v.duracion || '';
+    document.getElementById('vDescripcion').value = v.descripcion || '';
+    document.getElementById('vClasificacion').value = v.clasificacion || '';
+    document.getElementById('videoMsg').textContent = '';
+    abrirModal('modalVideo');
+}
+async function guardarVideo() {
+    const id = document.getElementById('videoId').value;
+    const body = { isan: document.getElementById('vIsan').value, titulo_original: document.getElementById('vTitulo').value,
+        anio: parseInt(document.getElementById('vAnio').value), duracion: parseInt(document.getElementById('vDuracion').value),
+        descripcion: document.getElementById('vDescripcion').value, id_clasificacion: document.getElementById('vClasificacion').value || null };
+    const msg = document.getElementById('videoMsg');
+    const { ok, data } = id ? await api('PUT', `/admin/video/${id}`, body) : await api('POST', '/admin/videos', body);
+    if (ok) { cerrarModal('modalVideo'); cargarVideos(); }
+    else { msg.textContent = data.error || 'Error al guardar'; }
+}
+async function eliminarVideo(id) {
+    if (!confirm('¿Eliminar este video?')) return;
+    const { ok, data } = await api('DELETE', `/admin/video/${id}`);
+    if (ok) cargarVideos();
+    else alert(data.error || 'Error al eliminar');
+}
+
+/* ===== SERIES ===== */
+async function cargarSeries() {
+    const { data } = await api('GET', '/admin/series');
+    const tb = document.getElementById('tbSeries');
+    const rows = data.series || [];
+    tb.innerHTML = rows.length ? rows.map(s => `<tr>
+        <td>${h(s.id)}</td><td>${h(s.titulo)}</td><td>${h(s.temporada)}</td><td>${h(s.total_episodios)}</td>
+        <td><button class="btn-sm btn-secondary" onclick="verPersonasSerie(${s.id},'${h(s.titulo)} T${s.temporada}')">Ver personas</button></td>
+    </tr>`).join('') : '<tr><td colspan="5" class="empty-msg">Sin series</td></tr>';
+}
+function verPersonasSerie(id, titulo) { window.open(`/docs#/default/get_admin_series__id_serie__personas`, '_blank'); }
+
+/* ===== PERSONAS ===== */
+async function cargarPersonas() {
+    const { data } = await api('GET', '/admin/personas');
+    const tb = document.getElementById('tbPersonas');
+    const rows = data.personas || [];
+    tb.innerHTML = rows.length ? rows.map(p => `<tr>
+        <td>${h(p.id)}</td><td>${h(p.nombre)}</td><td>${h(p.fecha_nacimiento)}</td>
+    </tr>`).join('') : '<tr><td colspan="3" class="empty-msg">Sin personas</td></tr>';
+}
+function abrirModalPersona() {
+    document.getElementById('pNombre').value = '';
+    document.getElementById('pFechaNac').value = '';
+    document.getElementById('personaMsg').textContent = '';
+    abrirModal('modalPersona');
+}
+async function guardarPersona() {
+    const nombre = document.getElementById('pNombre').value.trim();
+    const fecha = document.getElementById('pFechaNac').value;
+    if (!nombre) { document.getElementById('personaMsg').textContent = 'El nombre es requerido'; return; }
+    const body = { nombre };
+    if (fecha) body.fecha_nacimiento = fecha;
+    const { ok, data } = await api('POST', '/admin/personas', body);
+    if (ok) { cerrarModal('modalPersona'); cargarPersonas(); }
+    else document.getElementById('personaMsg').textContent = data.error || 'Error';
+}
+
+/* ===== CATEGORÍAS ===== */
+async function cargarCategorias() {
+    const { data } = await api('GET', '/admin/categorias');
+    const tb = document.getElementById('tbCategorias');
+    const rows = data.categorias || [];
+    tb.innerHTML = rows.length ? rows.map(c => `<tr><td>${h(c.id)}</td><td>${h(c.nombre)}</td></tr>`).join('')
+        : '<tr><td colspan="2" class="empty-msg">Sin categorías</td></tr>';
+}
+function abrirModalCategoria() { document.getElementById('catNombre').value = ''; document.getElementById('categoriaMsg').textContent = ''; abrirModal('modalCategoria'); }
+async function guardarCategoria() {
+    const nombre = document.getElementById('catNombre').value.trim();
+    if (!nombre) { document.getElementById('categoriaMsg').textContent = 'El nombre es requerido'; return; }
+    const { ok, data } = await api('POST', '/admin/categorias', { nombre });
+    if (ok) { cerrarModal('modalCategoria'); cargarCategorias(); }
+    else document.getElementById('categoriaMsg').textContent = data.error || 'Error';
+}
+
+/* ===== IDIOMAS ===== */
+async function cargarIdiomas() {
+    const { data } = await api('GET', '/admin/idiomas');
+    const tb = document.getElementById('tbIdiomas');
+    const rows = data.idiomas || [];
+    tb.innerHTML = rows.length ? rows.map(i => `<tr><td>${h(i.id)}</td><td>${h(i.lenguaje)}</td></tr>`).join('')
+        : '<tr><td colspan="2" class="empty-msg">Sin idiomas</td></tr>';
+}
+function abrirModalIdioma() { document.getElementById('idiomaLenguaje').value = ''; document.getElementById('idiomaMsg').textContent = ''; abrirModal('modalIdioma'); }
+async function guardarIdioma() {
+    const lenguaje = document.getElementById('idiomaLenguaje').value.trim();
+    if (!lenguaje) { document.getElementById('idiomaMsg').textContent = 'El lenguaje es requerido'; return; }
+    const { ok, data } = await api('POST', '/admin/idiomas', { lenguaje });
+    if (ok) { cerrarModal('modalIdioma'); cargarIdiomas(); }
+    else document.getElementById('idiomaMsg').textContent = data.error || 'Error';
+}
+
+/* ===== CLASIFICACIONES ===== */
+async function cargarClasificaciones() {
+    const { data } = await api('GET', '/admin/clasificaciones');
+    const tb = document.getElementById('tbClasificaciones');
+    const rows = data.clasificaciones || [];
+    tb.innerHTML = rows.length ? rows.map(c => `<tr>
+        <td><strong>${h(c.tipo)}</strong></td><td>${h(c.descripcion)}</td>
+        <td><button class="btn-sm btn-edit" onclick='editarClasificacion(${JSON.stringify(c)})'>Editar</button></td>
+    </tr>`).join('') : '<tr><td colspan="3" class="empty-msg">Sin clasificaciones</td></tr>';
+}
+function abrirModalClasificacion() {
+    document.getElementById('clasifTipoEdit').value = '';
+    document.getElementById('modalClasifTitulo').textContent = 'Nueva Clasificación';
+    document.getElementById('clasifTipo').value = 'G';
+    document.getElementById('clasifDesc').value = '';
+    document.getElementById('clasifTipoGroup').style.display = 'block';
+    document.getElementById('clasifMsg').textContent = '';
+    abrirModal('modalClasificacion');
+}
+function editarClasificacion(c) {
+    document.getElementById('clasifTipoEdit').value = c.tipo;
+    document.getElementById('modalClasifTitulo').textContent = `Editar Clasificación ${c.tipo}`;
+    document.getElementById('clasifDesc').value = c.descripcion;
+    document.getElementById('clasifTipoGroup').style.display = 'none';
+    document.getElementById('clasifMsg').textContent = '';
+    abrirModal('modalClasificacion');
+}
+async function guardarClasificacion() {
+    const tipoEdit = document.getElementById('clasifTipoEdit').value;
+    const desc = document.getElementById('clasifDesc').value.trim();
+    if (!desc) { document.getElementById('clasifMsg').textContent = 'La descripción es requerida'; return; }
+    let res;
+    if (tipoEdit) {
+        res = await api('PUT', `/admin/clasificacion/${tipoEdit}`, { descripcion: desc });
+    } else {
+        const tipo = document.getElementById('clasifTipo').value;
+        res = await api('POST', '/admin/clasificaciones', { tipo, descripcion: desc });
+    }
+    if (res.ok) { cerrarModal('modalClasificacion'); cargarClasificaciones(); }
+    else document.getElementById('clasifMsg').textContent = res.data.error || 'Error';
+}
+
+/* ===== USUARIOS ===== */
+async function cargarUsuarios() {
+    const { data } = await api('GET', '/admin/usuarios');
+    const tb = document.getElementById('tbUsuarios');
+    const rows = data.usuarios || [];
+    const miId = JSON.parse(atob(TOKEN.split('.')[1])).id;
+    tb.innerHTML = rows.length ? rows.map(u => `<tr>
+        <td>${h(u.id)}</td><td>${h(u.nombre_completo)}</td><td>${h(u.nombre_usuario)}</td>
+        <td>${h(u.documento)}</td>
+        <td><span class="badge badge-${u.rol === 'ADMINISTRADOR' ? 'admin' : 'gerente'}">${h(u.rol)}</span></td>
+        <td>${h(u.fecha_creacion)}</td>
+        <td style="display:flex;gap:4px;flex-wrap:wrap;">
+            <button class="btn-sm btn-edit" onclick='editarUsuario(${JSON.stringify(u)})'>Editar</button>
+            <button class="btn-sm btn-secondary" onclick="abrirReset(${u.id})">Reset pwd</button>
+            ${u.id !== miId ? `<button class="btn-sm btn-delete" onclick="eliminarUsuario(${u.id})">Eliminar</button>` : ''}
+        </td>
+    </tr>`).join('') : '<tr><td colspan="7" class="empty-msg">Sin usuarios</td></tr>';
+}
+function abrirModalUsuario() {
+    document.getElementById('usuarioId').value = '';
+    document.getElementById('modalUsuarioTitulo').textContent = 'Nuevo Usuario';
+    ['uNombre','uDocumento','uNombreUsuario','uPassword'].forEach(id => document.getElementById(id).value = '');
+    document.getElementById('uRol').value = 'ADMINISTRADOR';
+    document.getElementById('uPasswordGroup').style.display = 'block';
+    document.getElementById('usuarioMsg').textContent = '';
+    abrirModal('modalUsuario');
+}
+function editarUsuario(u) {
+    document.getElementById('usuarioId').value = u.id;
+    document.getElementById('modalUsuarioTitulo').textContent = 'Editar Usuario';
+    document.getElementById('uNombre').value = u.nombre_completo;
+    document.getElementById('uDocumento').value = u.documento;
+    document.getElementById('uNombreUsuario').value = u.nombre_usuario;
+    document.getElementById('uRol').value = u.rol;
+    document.getElementById('uPasswordGroup').style.display = 'none';
+    document.getElementById('usuarioMsg').textContent = '';
+    abrirModal('modalUsuario');
+}
+async function guardarUsuario() {
+    const id = document.getElementById('usuarioId').value;
+    const msg = document.getElementById('usuarioMsg');
+    if (id) {
+        const body = { nombre_completo: document.getElementById('uNombre').value,
+            documento: document.getElementById('uDocumento').value,
+            nombre_usuario: document.getElementById('uNombreUsuario').value };
+        const { ok, data } = await api('PUT', `/admin/usuario/${id}`, body);
+        if (!ok) { msg.textContent = data.error || 'Error'; return; }
+        const rol = document.getElementById('uRol').value;
+        await api('PUT', `/admin/usuario/${id}/rol`, { rol });
+        cerrarModal('modalUsuario'); cargarUsuarios();
+    } else {
+        const body = { nombre_completo: document.getElementById('uNombre').value,
+            documento: document.getElementById('uDocumento').value,
+            nombre_usuario: document.getElementById('uNombreUsuario').value,
+            password: document.getElementById('uPassword').value,
+            rol: document.getElementById('uRol').value };
+        const { ok, data } = await api('POST', '/admin/usuarios', body);
+        if (ok) { cerrarModal('modalUsuario'); cargarUsuarios(); }
+        else msg.textContent = data.error || 'Error';
+    }
+}
+async function eliminarUsuario(id) {
+    if (!confirm('¿Eliminar este usuario?')) return;
+    const { ok, data } = await api('DELETE', `/admin/usuario/${id}`);
+    if (ok) cargarUsuarios();
+    else alert(data.error || 'Error');
+}
+function abrirReset(id) {
+    document.getElementById('resetId').value = id;
+    document.getElementById('resetPwd').value = '';
+    document.getElementById('resetMsg').textContent = '';
+    abrirModal('modalReset');
+}
+async function confirmarReset() {
+    const id = document.getElementById('resetId').value;
+    const pwd = document.getElementById('resetPwd').value;
+    const { ok, data } = await api('PUT', `/admin/usuario/${id}/reset-password`, { nueva_password: pwd });
+    if (ok) { cerrarModal('modalReset'); document.getElementById('resetMsg').className = 'success-toast'; }
+    else document.getElementById('resetMsg').textContent = data.error || 'Error';
+}
+
+const loaders = { videos: cargarVideos, series: cargarSeries, personas: cargarPersonas, categorias: cargarCategorias, idiomas: cargarIdiomas, clasificaciones: cargarClasificaciones, usuarios: cargarUsuarios };
+
+// Cargar sección inicial
+cargarVideos();
+</script>
+</body>
+</html>

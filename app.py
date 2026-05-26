@@ -10,6 +10,8 @@ from reportlab.lib.pagesizes import letter
 from reportlab.pdfgen import canvas
 from io import BytesIO
 import json
+import openpyxl
+from openpyxl.styles import Font, PatternFill, Alignment
 
 app = Flask(__name__)
 api = Api(app, doc='/docs', title='SIC-NetPOLIx API', version='3.0', 
@@ -109,7 +111,7 @@ categoria_model = api.model('Categoria', {
 
 persona_model = api.model('Persona', {
     'nombre': fields.String(required=True),
-    'rol': fields.String(required=True, enum=['ACTOR', 'DIRECTOR', 'PRODUCTOR'])
+    'fecha_nacimiento': fields.String(description='Opcional, formato YYYY-MM-DD')
 })
 
 # ============================================
@@ -162,56 +164,67 @@ class Login(Resource):
     @api.expect(login_model)
     def post(self):
         data = request.json
+        credencial = data.get('email', '').strip()
+        password = data.get('password', '')
         conn = get_db()
         cursor = conn.cursor()
-        
-        print(f"Intentando login con email: {data['email']}")  # Debug
-        
-        # Buscar en clientes
+
+        # 1) Buscar en clientes por email
         cursor.execute("""
-            SELECT id_cliente, nombre, nickname, cedula, email, password, rol 
-            FROM cliente 
-            WHERE email = ?
-        """, (data['email'],))
-        row = cursor.fetchone() 
-        
+            SELECT id_cliente, nombre, nickname, cedula, email, password, rol
+            FROM cliente WHERE email = ?
+        """, (credencial,))
+        row = cursor.fetchone()
+
         if row:
-            print(f"Cliente encontrado: {row[1]}")  # Debug
-            print(f"Contraseña en BD: {row[5]}")  # Debug
-            print(f"Contraseña ingresada: {data['password']}")  # Debug
-            
-            # Verificar contraseña
-            if bcrypt.checkpw(data['password'].encode('utf-8'), row[5].encode('utf-8')):
-                print("Contraseña válida")  # Debug
-                
-                # Generar token
-                token = jwt.encode({
-                    'id': row[0],
-                    'nombre': row[1],
-                    'nickname': row[2] if row[2] else row[1],
-                    'email': row[4],
-                    'rol': row[6],
-                    'tipo': 'CLIENTE',
-                    'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
-                }, SECRET_KEY, algorithm='HS256')
-                
+            try:
+                pwd_ok = bcrypt.checkpw(password.encode('utf-8'), row[5].encode('utf-8'))
+            except ValueError:
+                pwd_ok = False
+            if not pwd_ok:
                 conn.close()
-                return {
-                    'token': token, 
-                    'nombre': row[1], 
-                    'nickname': row[2] if row[2] else row[1], 
-                    'cedula': row[3],
-                    'email': row[4],
-                    'rol': row[6]
-                }
-            else:
-                print("Contraseña inválida")  # Debug
-                conn.close()
-                return {'error': 'Credenciales inválidas - Contraseña incorrecta'}, 401
-        else:
-            print("Cliente no encontrado")  # Debug
+                return {'error': 'Credenciales inválidas'}, 401
+            token = jwt.encode({
+                'id': row[0], 'nombre': row[1],
+                'nickname': row[2] if row[2] else row[1],
+                'email': row[4], 'rol': row[6], 'tipo': 'CLIENTE',
+                'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+            }, SECRET_KEY, algorithm='HS256')
             conn.close()
+            return {
+                'token': token, 'nombre': row[1],
+                'nickname': row[2] if row[2] else row[1],
+                'cedula': row[3], 'email': row[4], 'rol': row[6]
+            }
+
+        # 2) Buscar en usuario_sistema por nombre_usuario
+        cursor.execute("""
+            SELECT id_usuario, nombre_completo, nombre_usuario, documento, password, rol
+            FROM usuario_sistema WHERE nombre_usuario = ?
+        """, (credencial,))
+        row_sys = cursor.fetchone()
+        conn.close()
+
+        if not row_sys:
             return {'error': 'Credenciales inválidas - Usuario no encontrado'}, 401
+
+        try:
+            pwd_sys_ok = bcrypt.checkpw(password.encode('utf-8'), row_sys[4].encode('utf-8'))
+        except ValueError:
+            pwd_sys_ok = False
+        if not pwd_sys_ok:
+            return {'error': 'Credenciales inválidas'}, 401
+
+        token = jwt.encode({
+            'id': row_sys[0], 'nombre': row_sys[1],
+            'nickname': row_sys[2], 'email': row_sys[2],
+            'rol': row_sys[5], 'tipo': 'SISTEMA',
+            'exp': datetime.datetime.utcnow() + datetime.timedelta(hours=24)
+        }, SECRET_KEY, algorithm='HS256')
+        return {
+            'token': token, 'nombre': row_sys[1],
+            'nickname': row_sys[2], 'rol': row_sys[5]
+        }
 
 
 
@@ -235,14 +248,36 @@ class Pagar(Resource):
         conn = get_db()
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT saldo, puntos FROM cliente WHERE id_cliente = ?", (id_cliente,))
+            cursor.execute("SELECT saldo, puntos, fecha_nacimiento_hash FROM cliente WHERE id_cliente = ?", (id_cliente,))
             row = cursor.fetchone()
             if not row:
                 return {'error': 'Cliente no encontrado'}, 404
-            
+
             saldo = float(row[0])
             puntos = int(row[1])
+            hash_guardado = row[2]
             total = 0
+
+            fecha_nacimiento = data.get('fecha_nacimiento')
+            for item in items:
+                es_serie = item.get('es_serie', False)
+                item_id = item.get('id') or item.get('id_video')
+                if es_serie:
+                    cursor.execute("""
+                        SELECT DISTINCT v.id_clasificacion
+                        FROM serie_video sv
+                        JOIN video v ON sv.id_video = v.id_video
+                        WHERE sv.id_serie = ? AND v.id_clasificacion IS NOT NULL
+                    """, (item_id,))
+                    clasificaciones = [r[0] for r in cursor.fetchall()]
+                else:
+                    cursor.execute("SELECT id_clasificacion FROM video WHERE id_video = ?", (item_id,))
+                    r = cursor.fetchone()
+                    clasificaciones = [r[0]] if r and r[0] else []
+                for clasificacion in clasificaciones:
+                    ok, error_edad = verificar_restriccion_edad(clasificacion, fecha_nacimiento, hash_guardado)
+                    if not ok:
+                        return {'error': error_edad}, 403
 
             for item in items:
                 tipo = item.get('tipo')
@@ -652,12 +687,41 @@ class VerCalificaciones(Resource):
 PRECIO_ALQUILER = 3.50
 PRECIO_COMPRA = 10.00
 
+EDAD_MINIMA_CLASIFICACION = {'PG-13': 13, 'R': 17, 'NC-17': 18}
+
+def verificar_restriccion_edad(clasificacion, fecha_nacimiento_str, hash_guardado):
+    """
+    Verifica si el cliente cumple la edad mínima para el contenido.
+    No almacena ni registra la fecha de nacimiento — solo la usa en memoria.
+    Retorna (True, None) si puede acceder, (False, mensaje) si no.
+    """
+    edad_minima = EDAD_MINIMA_CLASIFICACION.get(clasificacion, 0)
+    if edad_minima == 0:
+        return True, None
+    if not hash_guardado:
+        return False, f'El video es clasificación {clasificacion}. Registra tu fecha de nacimiento en tu perfil antes de acceder a este contenido.'
+    if not fecha_nacimiento_str:
+        return False, f'El video es clasificación {clasificacion} (mínimo {edad_minima} años). Incluye "fecha_nacimiento" (YYYY-MM-DD) en la solicitud para verificar tu edad.'
+    if not bcrypt.checkpw(fecha_nacimiento_str.encode('utf-8'), hash_guardado.encode('utf-8')):
+        return False, 'Fecha de nacimiento incorrecta.'
+    try:
+        fecha_nac = datetime.datetime.strptime(fecha_nacimiento_str, '%Y-%m-%d').date()
+    except ValueError:
+        return False, 'Formato de fecha inválido. Use YYYY-MM-DD.'
+    hoy = datetime.date.today()
+    edad = hoy.year - fecha_nac.year - ((hoy.month, hoy.day) < (fecha_nac.month, fecha_nac.day))
+    if edad < edad_minima:
+        return False, f'Debes tener al menos {edad_minima} años para acceder a contenido clasificación {clasificacion}.'
+    return True, None
+
 alquiler_model = api.model('Alquiler', {
-    'id_video': fields.Integer(required=True)
+    'id_video': fields.Integer(required=True),
+    'fecha_nacimiento': fields.String(description='Requerida para videos clasificación PG-13, R o NC-17 (formato YYYY-MM-DD)')
 })
 
 compra_model = api.model('Compra', {
-    'id_video': fields.Integer(required=True)
+    'id_video': fields.Integer(required=True),
+    'fecha_nacimiento': fields.String(description='Requerida para videos clasificación PG-13, R o NC-17 (formato YYYY-MM-DD)')
 })
 
 @api.route('/api/inicio')
@@ -708,23 +772,27 @@ class Alquilar(Resource):
         conn = get_db()
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT id_video, titulo_original FROM video WHERE id_video = ?", (id_video,))
+            cursor.execute("SELECT id_video, titulo_original, id_clasificacion FROM video WHERE id_video = ?", (id_video,))
             video = cursor.fetchone()
             if not video:
                 return {'error': 'Video no encontrado'}, 404
 
             cursor.execute("""
-                SELECT id_transaccion FROM transaccion 
+                SELECT id_transaccion FROM transaccion
                 WHERE id_cliente = ? AND id_video = ? AND tipo = 'ALQUILER'
                 AND fecha_expiracion >= GETDATE()
             """, (id_cliente, id_video))
             if cursor.fetchone():
                 return {'error': 'Ya tienes este video alquilado y sigue vigente'}, 400
 
-            cursor.execute("SELECT saldo FROM cliente WHERE id_cliente = ?", (id_cliente,))
+            cursor.execute("SELECT saldo, fecha_nacimiento_hash FROM cliente WHERE id_cliente = ?", (id_cliente,))
             row = cursor.fetchone()
             if not row or float(row[0]) < PRECIO_ALQUILER:
                 return {'error': f'Saldo insuficiente. El alquiler cuesta ${PRECIO_ALQUILER}'}, 400
+
+            ok, error_edad = verificar_restriccion_edad(video[2], data.get('fecha_nacimiento'), row[1])
+            if not ok:
+                return {'error': error_edad}, 403
 
             fecha_expiracion = (datetime.date.today() + datetime.timedelta(days=30)).isoformat()
 
@@ -764,22 +832,26 @@ class Comprar(Resource):
         conn = get_db()
         cursor = conn.cursor()
         try:
-            cursor.execute("SELECT id_video, titulo_original FROM video WHERE id_video = ?", (id_video,))
+            cursor.execute("SELECT id_video, titulo_original, id_clasificacion FROM video WHERE id_video = ?", (id_video,))
             video = cursor.fetchone()
             if not video:
                 return {'error': 'Video no encontrado'}, 404
 
             cursor.execute("""
-                SELECT id_transaccion FROM transaccion 
+                SELECT id_transaccion FROM transaccion
                 WHERE id_cliente = ? AND id_video = ? AND tipo = 'COMPRA'
             """, (id_cliente, id_video))
             if cursor.fetchone():
                 return {'error': 'Ya compraste este video anteriormente'}, 400
 
-            cursor.execute("SELECT saldo FROM cliente WHERE id_cliente = ?", (id_cliente,))
+            cursor.execute("SELECT saldo, fecha_nacimiento_hash FROM cliente WHERE id_cliente = ?", (id_cliente,))
             row = cursor.fetchone()
             if not row or float(row[0]) < PRECIO_COMPRA:
                 return {'error': f'Saldo insuficiente. La compra cuesta ${PRECIO_COMPRA}'}, 400
+
+            ok, error_edad = verificar_restriccion_edad(video[2], data.get('fecha_nacimiento'), row[1])
+            if not ok:
+                return {'error': error_edad}, 403
 
             cursor.execute("""
                 UPDATE cliente 
@@ -1102,13 +1174,27 @@ class AdminCategorias(Resource):
 @api.route('/admin/personas')
 class AdminPersonas(Resource):
     @token_required(roles=['ADMINISTRADOR'])
+    def get(self):
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id_persona, nombre, fecha_nacimiento FROM persona ORDER BY nombre")
+        rows = cursor.fetchall()
+        conn.close()
+        return {'personas': [{'id': r[0], 'nombre': r[1],
+                               'fecha_nacimiento': str(r[2]) if r[2] else None} for r in rows]}
+
+    @token_required(roles=['ADMINISTRADOR'])
     @api.expect(persona_model)
     def post(self):
         data = request.json
+        fecha_nac = data.get('fecha_nacimiento') or None
         conn = get_db()
         cursor = conn.cursor()
         try:
-            cursor.execute("INSERT INTO persona (nombre) VALUES (?)", (data['nombre'],))
+            cursor.execute(
+                "INSERT INTO persona (nombre, fecha_nacimiento) VALUES (?, ?)",
+                (data['nombre'], fecha_nac)
+            )
             cursor.execute("SELECT @@IDENTITY")
             id_persona = cursor.fetchone()[0]
             conn.commit()
@@ -1337,6 +1423,25 @@ class AdminVideoPersonas(Resource):
         finally:
             conn.close()
 
+@api.route('/admin/series')
+class AdminSeries(Resource):
+    @token_required(roles=['ADMINISTRADOR'])
+    def get(self):
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT s.id_serie, s.titulo, s.temporada,
+                   COUNT(sv.id_video) AS total_episodios
+            FROM serie s
+            LEFT JOIN serie_video sv ON s.id_serie = sv.id_serie
+            GROUP BY s.id_serie, s.titulo, s.temporada
+            ORDER BY s.titulo, s.temporada
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        return {'series': [{'id': r[0], 'titulo': r[1], 'temporada': r[2],
+                             'total_episodios': r[3]} for r in rows]}
+
 @api.route('/admin/series/<int:id_serie>/personas')
 class AdminSeriePersonas(Resource):
     @token_required(roles=['ADMINISTRADOR'])
@@ -1384,6 +1489,358 @@ class AdminSeriePersonas(Resource):
             conn.close()
 
 # ============================================
+# ADMIN — IDIOMAS
+# ============================================
+
+@api.route('/admin/idiomas')
+class AdminIdiomas(Resource):
+    @token_required(roles=['ADMINISTRADOR'])
+    def get(self):
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("SELECT id_idioma, lenguaje FROM idioma ORDER BY lenguaje")
+        rows = cursor.fetchall()
+        conn.close()
+        return {'idiomas': [{'id': r[0], 'lenguaje': r[1]} for r in rows]}
+
+    @token_required(roles=['ADMINISTRADOR'])
+    @api.expect(api.model('Idioma', {'lenguaje': fields.String(required=True)}))
+    def post(self):
+        data = request.json
+        lenguaje = data.get('lenguaje', '').strip()
+        if not lenguaje:
+            return {'error': 'El lenguaje es requerido'}, 400
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id_idioma FROM idioma WHERE lenguaje = ?", (lenguaje,))
+            if cursor.fetchone():
+                return {'error': 'El idioma ya existe'}, 400
+            cursor.execute("INSERT INTO idioma (lenguaje) VALUES (?)", (lenguaje,))
+            cursor.execute("SELECT @@IDENTITY")
+            id_idioma = int(cursor.fetchone()[0])
+            conn.commit()
+            return {'mensaje': 'Idioma creado exitosamente', 'id_idioma': id_idioma}, 201
+        except Exception as e:
+            conn.rollback()
+            return {'error': str(e)}, 400
+        finally:
+            conn.close()
+
+@api.route('/admin/video/<int:id_video>/idiomas')
+class AdminVideoIdiomas(Resource):
+    @token_required(roles=['ADMINISTRADOR'])
+    def get(self, id_video):
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT i.id_idioma, i.lenguaje, vi.tipo
+            FROM video_idioma vi
+            JOIN idioma i ON vi.id_idioma = i.id_idioma
+            WHERE vi.id_video = ?
+            ORDER BY vi.tipo, i.lenguaje
+        """, (id_video,))
+        rows = cursor.fetchall()
+        conn.close()
+        return {'idiomas': [{'id': r[0], 'lenguaje': r[1], 'tipo': r[2]} for r in rows]}
+
+    @token_required(roles=['ADMINISTRADOR'])
+    @api.expect(api.model('AsignarIdiomas', {
+        'idiomas': fields.List(fields.Nested(api.model('IdiomaAsignar', {
+            'id_idioma': fields.Integer(required=True),
+            'tipo': fields.String(required=True, enum=['ORIGINAL', 'SUBTITULO', 'DOBLAJE'])
+        })))
+    }))
+    def post(self, id_video):
+        data = request.json
+        idiomas = data.get('idiomas', [])
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id_video FROM video WHERE id_video = ?", (id_video,))
+            if not cursor.fetchone():
+                return {'error': 'Video no encontrado'}, 404
+            cursor.execute("DELETE FROM video_idioma WHERE id_video = ?", (id_video,))
+            for item in idiomas:
+                if item['tipo'] not in ('ORIGINAL', 'SUBTITULO', 'DOBLAJE'):
+                    return {'error': f'Tipo "{item["tipo"]}" no válido. Use ORIGINAL, SUBTITULO o DOBLAJE'}, 400
+                cursor.execute("SELECT id_idioma FROM idioma WHERE id_idioma = ?", (item['id_idioma'],))
+                if not cursor.fetchone():
+                    return {'error': f'Idioma {item["id_idioma"]} no encontrado'}, 404
+                cursor.execute(
+                    "INSERT INTO video_idioma (id_video, id_idioma, tipo) VALUES (?, ?, ?)",
+                    (id_video, item['id_idioma'], item['tipo'])
+                )
+            conn.commit()
+            return {'mensaje': 'Idiomas asignados exitosamente'}
+        except Exception as e:
+            conn.rollback()
+            return {'error': str(e)}, 500
+        finally:
+            conn.close()
+
+# ============================================
+# ADMIN — CLASIFICACIONES
+# ============================================
+
+@api.route('/admin/clasificaciones')
+class AdminClasificaciones(Resource):
+    @token_required(roles=['ADMINISTRADOR'])
+    def get(self):
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT tipo, descripcion FROM clasificacion ORDER BY tipo")
+            rows = cursor.fetchall()
+            conn.close()
+            return {'clasificaciones': [{'tipo': r[0], 'descripcion': r[1]} for r in rows]}
+        except Exception as e:
+            conn.close()
+            return {'error': str(e)}, 500
+
+    @token_required(roles=['ADMINISTRADOR'])
+    @api.expect(api.model('Clasificacion', {
+        'tipo': fields.String(required=True, enum=['G', 'PG', 'PG-13', 'R', 'NC-17']),
+        'descripcion': fields.String(required=True)
+    }))
+    def post(self):
+        data = request.json
+        tipo = data.get('tipo', '').upper()
+        descripcion = data.get('descripcion', '').strip()
+        if tipo not in ('G', 'PG', 'PG-13', 'R', 'NC-17'):
+            return {'error': 'Tipo debe ser G, PG, PG-13, R o NC-17'}, 400
+        if not descripcion:
+            return {'error': 'La descripción es requerida'}, 400
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT tipo FROM clasificacion WHERE tipo = ?", (tipo,))
+            if cursor.fetchone():
+                return {'error': f'La clasificación {tipo} ya existe'}, 400
+            cursor.execute("INSERT INTO clasificacion (tipo, descripcion) VALUES (?, ?)", (tipo, descripcion))
+            conn.commit()
+            return {'mensaje': f'Clasificación {tipo} creada exitosamente'}, 201
+        except Exception as e:
+            conn.rollback()
+            return {'error': str(e)}, 400
+        finally:
+            conn.close()
+
+@api.route('/admin/clasificacion/<string:tipo>')
+class AdminClasificacionDetalle(Resource):
+    @token_required(roles=['ADMINISTRADOR'])
+    @api.expect(api.model('ActualizarClasificacion', {'descripcion': fields.String(required=True)}))
+    def put(self, tipo):
+        data = request.json
+        descripcion = data.get('descripcion', '').strip()
+        if not descripcion:
+            return {'error': 'La descripción es requerida'}, 400
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE clasificacion SET descripcion = ? WHERE tipo = ?", (descripcion, tipo.upper()))
+            if cursor.rowcount == 0:
+                return {'error': f'Clasificación {tipo} no encontrada'}, 404
+            conn.commit()
+            return {'mensaje': 'Clasificación actualizada exitosamente'}
+        except Exception as e:
+            conn.rollback()
+            return {'error': str(e)}, 400
+        finally:
+            conn.close()
+
+@api.route('/admin/video/<int:id_video>/clasificacion')
+class AdminVideoClasificacion(Resource):
+    @token_required(roles=['ADMINISTRADOR'])
+    @api.expect(api.model('AsignarClasificacion', {
+        'tipo': fields.String(required=True, enum=['G', 'PG', 'PG-13', 'R', 'NC-17'])
+    }))
+    def put(self, id_video):
+        data = request.json
+        tipo = data.get('tipo', '').upper()
+        if tipo not in ('G', 'PG', 'PG-13', 'R', 'NC-17'):
+            return {'error': 'Tipo debe ser G, PG, PG-13, R o NC-17'}, 400
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE video SET id_clasificacion = ? WHERE id_video = ?", (tipo, id_video))
+            if cursor.rowcount == 0:
+                return {'error': 'Video no encontrado'}, 404
+            conn.commit()
+            return {'mensaje': f'Clasificación {tipo} asignada al video exitosamente'}
+        except Exception as e:
+            conn.rollback()
+            return {'error': str(e)}, 400
+        finally:
+            conn.close()
+
+# ============================================
+# ADMIN — GESTIÓN DE USUARIOS
+# ============================================
+
+usuario_admin_model = api.model('UsuarioAdmin', {
+    'nombre_completo': fields.String(required=True),
+    'documento': fields.String(required=True),
+    'nombre_usuario': fields.String(required=True, description='Usado para iniciar sesión'),
+    'password': fields.String(required=True),
+    'rol': fields.String(required=True, enum=['ADMINISTRADOR', 'GERENTE'])
+})
+
+@api.route('/admin/usuarios')
+class AdminUsuarios(Resource):
+    @token_required(roles=['ADMINISTRADOR'])
+    def get(self):
+        conn = get_db()
+        cursor = conn.cursor()
+        cursor.execute("""
+            SELECT id_usuario, nombre_completo, documento, nombre_usuario, rol, fecha_creacion
+            FROM usuario_sistema
+            ORDER BY rol, nombre_completo
+        """)
+        rows = cursor.fetchall()
+        conn.close()
+        return {'usuarios': [
+            {'id': r[0], 'nombre_completo': r[1], 'documento': r[2],
+             'nombre_usuario': r[3], 'rol': r[4],
+             'fecha_creacion': str(r[5]) if r[5] else None}
+            for r in rows
+        ]}
+
+    @token_required(roles=['ADMINISTRADOR'])
+    @api.expect(usuario_admin_model)
+    def post(self):
+        data = request.json
+        rol = data.get('rol', '').upper()
+        if rol not in ('ADMINISTRADOR', 'GERENTE'):
+            return {'error': 'El rol debe ser ADMINISTRADOR o GERENTE'}, 400
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id_usuario FROM usuario_sistema WHERE nombre_usuario = ?",
+                           (data['nombre_usuario'],))
+            if cursor.fetchone():
+                return {'error': 'El nombre de usuario ya existe'}, 400
+            cursor.execute("SELECT id_usuario FROM usuario_sistema WHERE documento = ?",
+                           (data['documento'],))
+            if cursor.fetchone():
+                return {'error': 'El documento ya está registrado'}, 400
+            hashed = bcrypt.hashpw(data['password'].encode('utf-8'), bcrypt.gensalt())
+            cursor.execute("""
+                INSERT INTO usuario_sistema (nombre_completo, documento, nombre_usuario, password, rol)
+                VALUES (?, ?, ?, ?, ?)
+            """, (data['nombre_completo'], data['documento'],
+                  data['nombre_usuario'], hashed.decode('utf-8'), rol))
+            cursor.execute("SELECT @@IDENTITY")
+            id_nuevo = int(cursor.fetchone()[0])
+            conn.commit()
+            return {'mensaje': f'Usuario {rol} creado exitosamente', 'id': id_nuevo}, 201
+        except Exception as e:
+            conn.rollback()
+            return {'error': str(e)}, 400
+        finally:
+            conn.close()
+
+@api.route('/admin/usuario/<int:id_usuario>')
+class AdminUsuarioDetalle(Resource):
+    @token_required(roles=['ADMINISTRADOR'])
+    @api.expect(api.model('ActualizarUsuario', {
+        'nombre_completo': fields.String,
+        'documento': fields.String,
+        'nombre_usuario': fields.String
+    }))
+    def put(self, id_usuario):
+        data = request.json
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("""
+                UPDATE usuario_sistema
+                SET nombre_completo=?, documento=?, nombre_usuario=?
+                WHERE id_usuario=?
+            """, (data.get('nombre_completo'), data.get('documento'),
+                  data.get('nombre_usuario'), id_usuario))
+            if cursor.rowcount == 0:
+                return {'error': 'Usuario no encontrado'}, 404
+            conn.commit()
+            return {'mensaje': 'Usuario actualizado exitosamente'}
+        except Exception as e:
+            conn.rollback()
+            return {'error': str(e)}, 400
+        finally:
+            conn.close()
+
+    @token_required(roles=['ADMINISTRADOR'])
+    def delete(self, id_usuario):
+        if id_usuario == request.user.get('id'):
+            return {'error': 'No puedes eliminar tu propio usuario'}, 400
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("DELETE FROM usuario_sistema WHERE id_usuario=?", (id_usuario,))
+            if cursor.rowcount == 0:
+                return {'error': 'Usuario no encontrado'}, 404
+            conn.commit()
+            return {'mensaje': 'Usuario eliminado exitosamente'}
+        except Exception as e:
+            conn.rollback()
+            return {'error': str(e)}, 400
+        finally:
+            conn.close()
+
+@api.route('/admin/usuario/<int:id_usuario>/rol')
+class AdminUsuarioRol(Resource):
+    @token_required(roles=['ADMINISTRADOR'])
+    @api.expect(api.model('CambiarRol', {
+        'rol': fields.String(required=True, enum=['ADMINISTRADOR', 'GERENTE'])
+    }))
+    def put(self, id_usuario):
+        rol = request.json.get('rol', '').upper()
+        if rol not in ('ADMINISTRADOR', 'GERENTE'):
+            return {'error': 'El rol debe ser ADMINISTRADOR o GERENTE'}, 400
+        if id_usuario == request.user.get('id'):
+            return {'error': 'No puedes cambiar tu propio rol'}, 400
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("UPDATE usuario_sistema SET rol=? WHERE id_usuario=?",
+                           (rol, id_usuario))
+            if cursor.rowcount == 0:
+                return {'error': 'Usuario no encontrado'}, 404
+            conn.commit()
+            return {'mensaje': f'Rol actualizado a {rol} exitosamente'}
+        except Exception as e:
+            conn.rollback()
+            return {'error': str(e)}, 400
+        finally:
+            conn.close()
+
+@api.route('/admin/usuario/<int:id_usuario>/reset-password')
+class AdminResetPassword(Resource):
+    @token_required(roles=['ADMINISTRADOR'])
+    @api.expect(api.model('ResetPassword', {'nueva_password': fields.String(required=True)}))
+    def put(self, id_usuario):
+        nueva = request.json.get('nueva_password', '').strip()
+        if not nueva or len(nueva) < 6:
+            return {'error': 'La contraseña debe tener al menos 6 caracteres'}, 400
+        conn = get_db()
+        cursor = conn.cursor()
+        try:
+            cursor.execute("SELECT id_usuario FROM usuario_sistema WHERE id_usuario=?",
+                           (id_usuario,))
+            if not cursor.fetchone():
+                return {'error': 'Usuario no encontrado'}, 404
+            hashed = bcrypt.hashpw(nueva.encode('utf-8'), bcrypt.gensalt())
+            cursor.execute("UPDATE usuario_sistema SET password=? WHERE id_usuario=?",
+                           (hashed.decode('utf-8'), id_usuario))
+            conn.commit()
+            return {'mensaje': 'Contraseña restablecida exitosamente'}
+        except Exception as e:
+            conn.rollback()
+            return {'error': str(e)}, 400
+        finally:
+            conn.close()
+
+# ============================================
 # ENDPOINTS GERENTE
 # ============================================
 
@@ -1394,14 +1851,25 @@ class Reportes(Resource):
         conn = get_db()
         cursor = conn.cursor()
 
+        # Reporte: mejor calificados
         cursor.execute("""
             SELECT TOP 5 titulo_original, promedio
             FROM vw_promedio_calificaciones
             WHERE promedio > 0
             ORDER BY promedio DESC
         """)
-        top_videos = [{'titulo': r[0], 'promedio': float(r[1])} for r in cursor.fetchall()]
+        mejor_calificados = [{'titulo': r[0], 'promedio': float(r[1])} for r in cursor.fetchall()]
 
+        # Reporte: peor calificados
+        cursor.execute("""
+            SELECT TOP 5 titulo_original, promedio
+            FROM vw_promedio_calificaciones
+            WHERE promedio > 0
+            ORDER BY promedio ASC
+        """)
+        peor_calificados = [{'titulo': r[0], 'promedio': float(r[1])} for r in cursor.fetchall()]
+
+        # Reporte: actividad de clientes (transacciones por tipo)
         cursor.execute("""
             SELECT tipo, COUNT(*) AS cantidad, SUM(monto) AS total_ingresos
             FROM transaccion
@@ -1418,12 +1886,36 @@ class Reportes(Resource):
         cursor.execute("SELECT COUNT(*) FROM cliente WHERE rol = 'CLIENTE'")
         total_clientes = cursor.fetchone()[0]
 
+        # Reporte: crecimiento de catálogo (videos por año de producción)
+        cursor.execute("""
+            SELECT anio, COUNT(*) AS cantidad
+            FROM video
+            WHERE anio IS NOT NULL
+            GROUP BY anio
+            ORDER BY anio DESC
+        """)
+        crecimiento_catalogo = [{'anio': r[0], 'videos': r[1]} for r in cursor.fetchall()]
+
+        # Reporte: categorías más populares (por cantidad de transacciones)
+        cursor.execute("""
+            SELECT TOP 6 c.nombre, COUNT(t.id_transaccion) AS total_transacciones
+            FROM categoria c
+            JOIN video_categoria vc ON c.id_categoria = vc.id_categoria
+            JOIN transaccion t ON vc.id_video = t.id_video
+            GROUP BY c.nombre
+            ORDER BY total_transacciones DESC
+        """)
+        categorias_populares = [{'categoria': r[0], 'transacciones': r[1]} for r in cursor.fetchall()]
+
         conn.close()
         return {
-            'top_videos': top_videos,
+            'mejor_calificados': mejor_calificados,
+            'peor_calificados': peor_calificados,
             'transacciones_por_tipo': transacciones_por_tipo,
             'calificaciones_ultimo_mes': calificaciones_mes,
-            'total_clientes': total_clientes
+            'total_clientes': total_clientes,
+            'crecimiento_catalogo': crecimiento_catalogo,
+            'categorias_populares': categorias_populares
         }
 
 @api.route('/gerente/reportes/exportar')
@@ -1433,25 +1925,120 @@ class ExportarReporte(Resource):
         formato = request.args.get('formato', 'json')
         conn = get_db()
         cursor = conn.cursor()
+
         cursor.execute("""
-            SELECT TOP 5 titulo_original, promedio
-            FROM vw_promedio_calificaciones
-            ORDER BY promedio DESC
+            SELECT TOP 5 titulo_original, promedio FROM vw_promedio_calificaciones
+            WHERE promedio > 0 ORDER BY promedio DESC
         """)
-        datos = cursor.fetchall()
+        mejor = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT TOP 5 titulo_original, promedio FROM vw_promedio_calificaciones
+            WHERE promedio > 0 ORDER BY promedio ASC
+        """)
+        peor = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT tipo, COUNT(*) AS cantidad, SUM(monto) AS total_ingresos
+            FROM transaccion GROUP BY tipo
+        """)
+        transacciones = cursor.fetchall()
+
+        cursor.execute("""
+            SELECT TOP 6 c.nombre, COUNT(t.id_transaccion) AS total
+            FROM categoria c
+            JOIN video_categoria vc ON c.id_categoria = vc.id_categoria
+            JOIN transaccion t ON vc.id_video = t.id_video
+            GROUP BY c.nombre ORDER BY total DESC
+        """)
+        categorias = cursor.fetchall()
+
         conn.close()
+
         if formato == 'pdf':
             buffer = BytesIO()
             c = canvas.Canvas(buffer, pagesize=letter)
-            c.drawString(100, 750, "REPORTE DE VIDEOS MEJOR CALIFICADOS")
-            y = 700
-            for i, r in enumerate(datos):
-                c.drawString(100, y, f"{i+1}. {r[0]} - Promedio: {float(r[1]):.2f}")
-                y -= 30
+            c.setFont('Helvetica-Bold', 16)
+            c.drawString(100, 770, 'REPORTE GERENTE - SIC-NetPOLIx')
+            c.setFont('Helvetica-Bold', 12)
+            y = 740
+            c.drawString(100, y, 'Videos Mejor Calificados')
+            c.setFont('Helvetica', 11)
+            y -= 20
+            for i, r in enumerate(mejor):
+                c.drawString(110, y, f'{i+1}. {r[0]}  —  {float(r[1]):.2f}')
+                y -= 18
+            y -= 10
+            c.setFont('Helvetica-Bold', 12)
+            c.drawString(100, y, 'Videos Peor Calificados')
+            c.setFont('Helvetica', 11)
+            y -= 20
+            for i, r in enumerate(peor):
+                c.drawString(110, y, f'{i+1}. {r[0]}  —  {float(r[1]):.2f}')
+                y -= 18
+            y -= 10
+            c.setFont('Helvetica-Bold', 12)
+            c.drawString(100, y, 'Actividad de Clientes (Transacciones)')
+            c.setFont('Helvetica', 11)
+            y -= 20
+            for r in transacciones:
+                c.drawString(110, y, f'{r[0]}: {r[1]} transacciones  —  ${float(r[2]):.2f}')
+                y -= 18
+            y -= 10
+            c.setFont('Helvetica-Bold', 12)
+            c.drawString(100, y, 'Categorias Mas Populares')
+            c.setFont('Helvetica', 11)
+            y -= 20
+            for r in categorias:
+                c.drawString(110, y, f'{r[0]}: {r[1]} transacciones')
+                y -= 18
             c.save()
             buffer.seek(0)
-            return send_file(buffer, as_attachment=True, download_name='reporte.pdf', mimetype='application/pdf')
-        return {'top_videos': [{'titulo': r[0], 'promedio': float(r[1])} for r in datos]}
+            return send_file(buffer, as_attachment=True, download_name='reporte_gerente.pdf',
+                             mimetype='application/pdf')
+
+        if formato == 'excel':
+            wb = openpyxl.Workbook()
+
+            header_font = Font(bold=True, color='FFFFFF')
+            header_fill = PatternFill(fill_type='solid', fgColor='1a1a2e')
+            center = Alignment(horizontal='center')
+
+            def crear_hoja(nombre, encabezados, filas):
+                ws = wb.create_sheet(nombre)
+                for col, titulo in enumerate(encabezados, 1):
+                    cell = ws.cell(row=1, column=col, value=titulo)
+                    cell.font = header_font
+                    cell.fill = header_fill
+                    cell.alignment = center
+                for row_idx, fila in enumerate(filas, 2):
+                    for col_idx, valor in enumerate(fila, 1):
+                        ws.cell(row=row_idx, column=col_idx, value=valor)
+
+            crear_hoja('Mejor Calificados', ['#', 'Titulo', 'Promedio'],
+                       [(i+1, r[0], round(float(r[1]), 2)) for i, r in enumerate(mejor)])
+            crear_hoja('Peor Calificados', ['#', 'Titulo', 'Promedio'],
+                       [(i+1, r[0], round(float(r[1]), 2)) for i, r in enumerate(peor)])
+            crear_hoja('Transacciones', ['Tipo', 'Cantidad', 'Total Ingresos ($)'],
+                       [(r[0], r[1], round(float(r[2]), 2)) for r in transacciones])
+            crear_hoja('Categorias Populares', ['Categoria', 'Transacciones'],
+                       [(r[0], r[1]) for r in categorias])
+
+            if 'Sheet' in wb.sheetnames:
+                del wb['Sheet']
+
+            buffer = BytesIO()
+            wb.save(buffer)
+            buffer.seek(0)
+            return send_file(buffer, as_attachment=True, download_name='reporte_gerente.xlsx',
+                             mimetype='application/vnd.openxmlformats-officedocument.spreadsheetml.sheet')
+
+        return {
+            'mejor_calificados': [{'titulo': r[0], 'promedio': float(r[1])} for r in mejor],
+            'peor_calificados': [{'titulo': r[0], 'promedio': float(r[1])} for r in peor],
+            'transacciones': [{'tipo': r[0], 'cantidad': r[1], 'total': float(r[2])} for r in transacciones],
+            'categorias_populares': [{'categoria': r[0], 'transacciones': r[1]} for r in categorias]
+        }
 
 @api.route('/gerente/descargar/<int:id_video>')
 class DescargarVideo(Resource):
@@ -1487,6 +2074,14 @@ def registro_page():
 @app.route('/dashboard')
 def dashboard_page():
     return render_template('dashboard.html')
+
+@app.route('/gerente')
+def gerente_page():
+    return render_template('gerente.html')
+
+@app.route('/admin')
+def admin_page():
+    return render_template('admin.html')
 
 
 if __name__ == '__main__':

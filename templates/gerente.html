@@ -1,0 +1,365 @@
+<!DOCTYPE html>
+<html lang="es">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>SIC-NetPOLIx - Panel Gerente</title>
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <style>
+        * { box-sizing: border-box; margin: 0; padding: 0; }
+        body { font-family: 'Roboto', sans-serif; background: #0f0f1a; color: #e0e0e0; min-height: 100vh; }
+
+        .header {
+            background: #1a1a2e; padding: 16px 32px;
+            display: flex; align-items: center; justify-content: space-between;
+            border-bottom: 2px solid #e50914; position: sticky; top: 0; z-index: 10;
+        }
+        .header h1 { font-size: 1.4rem; color: #fff; letter-spacing: 1px; }
+        .header h1 span { color: #e50914; }
+        .header-right { display: flex; align-items: center; gap: 16px; }
+        .header-right span { font-size: 0.9rem; color: #aaa; }
+        .btn-logout { background: #e50914; color: #fff; border: none; padding: 8px 16px; border-radius: 6px; cursor: pointer; font-size: 0.85rem; }
+        .btn-logout:hover { background: #b0070f; }
+
+        .page { max-width: 1280px; margin: 0 auto; padding: 28px 24px; }
+
+        /* KPI GRID */
+        .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(170px, 1fr)); gap: 14px; margin-bottom: 28px; }
+        .kpi-card { background: #1a1a2e; border-radius: 12px; padding: 20px 16px; text-align: center; border-left: 4px solid #e50914; }
+        .kpi-card.green { border-left-color: #27ae60; }
+        .kpi-card.blue  { border-left-color: #2471a3; }
+        .kpi-card.orange{ border-left-color: #e67e22; }
+        .kpi-value { font-size: 2rem; font-weight: 700; color: #e50914; }
+        .kpi-card.green  .kpi-value { color: #58d68d; }
+        .kpi-card.blue   .kpi-value { color: #5dade2; }
+        .kpi-card.orange .kpi-value { color: #f0a500; }
+        .kpi-label { font-size: 0.75rem; color: #aaa; margin-top: 4px; text-transform: uppercase; letter-spacing: 1px; }
+
+        /* EXPORT */
+        .export-bar { display: flex; gap: 12px; margin-bottom: 28px; flex-wrap: wrap; align-items: center; }
+        .export-bar span { font-size: 0.82rem; color: #666; }
+        .btn-export { padding: 9px 20px; border-radius: 8px; border: none; cursor: pointer; font-size: 0.88rem; font-weight: 500; }
+        .btn-pdf   { background: #c0392b; color: #fff; }
+        .btn-excel { background: #27ae60; color: #fff; }
+        .btn-export:hover { opacity: 0.85; }
+
+        /* SECTION TITLE */
+        .section-title { font-size: 0.7rem; color: #555; text-transform: uppercase; letter-spacing: 2px; margin-bottom: 14px; margin-top: 32px; padding-bottom: 6px; border-bottom: 1px solid #1e1e30; }
+
+        /* CHARTS GRID */
+        .charts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(320px, 1fr)); gap: 20px; margin-bottom: 8px; }
+        .chart-card { background: #1a1a2e; border-radius: 12px; padding: 20px; }
+        .chart-card h3 { font-size: 0.88rem; color: #e50914; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 16px; }
+        .chart-wrap { position: relative; height: 220px; }
+        .chart-wrap-tall { position: relative; height: 260px; }
+
+        /* TABLES */
+        .reports-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(340px, 1fr)); gap: 20px; }
+        .report-card { background: #1a1a2e; border-radius: 12px; padding: 20px; }
+        .report-card h3 { font-size: 0.88rem; color: #e50914; text-transform: uppercase; letter-spacing: 1px; margin-bottom: 14px; border-bottom: 1px solid #2a2a3e; padding-bottom: 8px; }
+        .report-table { width: 100%; border-collapse: collapse; }
+        .report-table th { text-align: left; font-size: 0.72rem; color: #888; text-transform: uppercase; padding: 6px 8px; border-bottom: 1px solid #2a2a3e; }
+        .report-table td { padding: 9px 8px; font-size: 0.86rem; border-bottom: 1px solid #16162a; }
+        .report-table tr:last-child td { border-bottom: none; }
+        .badge { display: inline-block; padding: 3px 10px; border-radius: 20px; font-size: 0.72rem; font-weight: 600; }
+        .badge-compra   { background: #1e3a5f; color: #5dade2; }
+        .badge-alquiler { background: #1e4620; color: #58d68d; }
+        .rating-bar { display: flex; align-items: center; gap: 8px; }
+        .rating-fill { height: 6px; border-radius: 3px; background: #e50914; min-width: 4px; }
+        .loading { color: #555; font-size: 0.85rem; text-align: center; padding: 20px; }
+
+        /* INGRESOS HIGHLIGHT */
+        .ingresos-highlight {
+            background: linear-gradient(135deg, #1a1a2e 0%, #16213e 100%);
+            border: 1px solid #e50914;
+            border-radius: 12px; padding: 20px 28px;
+            display: flex; align-items: center; gap: 20px;
+            margin-bottom: 28px;
+        }
+        .ingresos-highlight .big-money { font-size: 2.8rem; font-weight: 700; color: #58d68d; letter-spacing: 1px; }
+        .ingresos-highlight .sub { font-size: 0.8rem; color: #aaa; }
+        .ingresos-highlight .breakdown { display: flex; gap: 28px; margin-top: 6px; flex-wrap: wrap; }
+        .ingresos-highlight .breakdown span { font-size: 0.82rem; }
+        .compra-color { color: #5dade2; }
+        .alquiler-color { color: #f0a500; }
+        .divider { width: 1px; background: #2a2a3e; align-self: stretch; }
+    </style>
+</head>
+<body>
+
+<div class="header">
+    <h1>SIC-<span>NetPOLIx</span> &nbsp;|&nbsp; Panel Gerente</h1>
+    <div class="header-right">
+        <span id="nombreGerente"></span>
+        <button class="btn-logout" onclick="cerrarSesion()">Cerrar sesión</button>
+    </div>
+</div>
+
+<div class="page">
+
+    <!-- KPIs -->
+    <div class="kpi-grid">
+        <div class="kpi-card">
+            <div class="kpi-value" id="kpiClientes">—</div>
+            <div class="kpi-label">Clientes registrados</div>
+        </div>
+        <div class="kpi-card blue">
+            <div class="kpi-value" id="kpiCalifMes">—</div>
+            <div class="kpi-label">Calificaciones (30 días)</div>
+        </div>
+        <div class="kpi-card orange">
+            <div class="kpi-value" id="kpiTransacciones">—</div>
+            <div class="kpi-label">Total transacciones</div>
+        </div>
+        <div class="kpi-card green">
+            <div class="kpi-value" id="kpiCompras">—</div>
+            <div class="kpi-label">Compras realizadas</div>
+        </div>
+        <div class="kpi-card orange">
+            <div class="kpi-value" id="kpiAlquileres">—</div>
+            <div class="kpi-label">Alquileres realizados</div>
+        </div>
+    </div>
+
+    <!-- INGRESOS DESTACADOS -->
+    <div class="ingresos-highlight">
+        <div>
+            <div class="sub">Ingresos totales generados</div>
+            <div class="big-money" id="ingresosTotal">$ —</div>
+            <div class="breakdown">
+                <span class="compra-color">Compras: <strong id="ingresosCompra">—</strong></span>
+                <span class="alquiler-color">Alquileres: <strong id="ingresosAlquiler">—</strong></span>
+            </div>
+        </div>
+        <div class="divider"></div>
+        <div style="font-size:0.82rem;color:#666;max-width:200px;line-height:1.6;">
+            Suma de todas las transacciones procesadas en la plataforma.
+        </div>
+    </div>
+
+    <!-- Exportar -->
+    <div class="export-bar">
+        <span>Exportar reporte completo:</span>
+        <button class="btn-export btn-pdf" onclick="exportar('pdf')">Exportar PDF</button>
+        <button class="btn-export btn-excel" onclick="exportar('excel')">Exportar Excel</button>
+    </div>
+
+    <!-- GRÁFICAS -->
+    <div class="section-title">Visualizaciones</div>
+    <div class="charts-grid">
+
+        <div class="chart-card">
+            <h3>Transacciones por tipo</h3>
+            <div class="chart-wrap">
+                <canvas id="chartTipos"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-card">
+            <h3>Categorías más populares</h3>
+            <div class="chart-wrap">
+                <canvas id="chartCategorias"></canvas>
+            </div>
+        </div>
+
+        <div class="chart-card" style="grid-column: span 2;">
+            <h3>Crecimiento del catálogo por año</h3>
+            <div class="chart-wrap-tall">
+                <canvas id="chartCatalogo"></canvas>
+            </div>
+        </div>
+
+    </div>
+
+    <!-- TABLAS -->
+    <div class="section-title" style="margin-top:36px;">Detalles de calificaciones</div>
+    <div class="reports-grid">
+
+        <div class="report-card">
+            <h3>Videos Mejor Calificados</h3>
+            <table class="report-table">
+                <thead><tr><th>#</th><th>Título</th><th>Promedio</th></tr></thead>
+                <tbody id="tbMejor"><tr><td colspan="3" class="loading">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+
+        <div class="report-card">
+            <h3>Videos Peor Calificados</h3>
+            <table class="report-table">
+                <thead><tr><th>#</th><th>Título</th><th>Promedio</th></tr></thead>
+                <tbody id="tbPeor"><tr><td colspan="3" class="loading">Cargando...</td></tr></tbody>
+            </table>
+        </div>
+
+    </div>
+</div>
+
+<script>
+    const TOKEN = localStorage.getItem('token');
+    const ROL   = localStorage.getItem('rol');
+    if (!TOKEN || ROL !== 'GERENTE') window.location.href = '/login';
+    document.getElementById('nombreGerente').textContent = localStorage.getItem('nombre') || 'Gerente';
+
+    function cerrarSesion() { localStorage.clear(); window.location.href = '/login'; }
+
+    let chartTipos, chartCategorias, chartCatalogo;
+
+    async function cargarReportes() {
+        try {
+            const res = await fetch('/gerente/reportes', {
+                headers: { 'Authorization': 'Bearer ' + TOKEN }
+            });
+            if (res.status === 401 || res.status === 403) { window.location.href = '/login'; return; }
+            const d = await res.json();
+
+            const txTipos = d.transacciones_por_tipo || [];
+            const compraRow    = txTipos.find(t => t.tipo === 'COMPRA')    || { cantidad: 0, total_ingresos: 0 };
+            const alquilerRow  = txTipos.find(t => t.tipo === 'ALQUILER')  || { cantidad: 0, total_ingresos: 0 };
+            const totalTx      = txTipos.reduce((s, t) => s + t.cantidad, 0);
+            const totalIngreso  = txTipos.reduce((s, t) => s + t.total_ingresos, 0);
+
+            // KPIs
+            document.getElementById('kpiClientes').textContent       = d.total_clientes ?? '—';
+            document.getElementById('kpiCalifMes').textContent       = d.calificaciones_ultimo_mes ?? '—';
+            document.getElementById('kpiTransacciones').textContent  = totalTx;
+            document.getElementById('kpiCompras').textContent        = compraRow.cantidad;
+            document.getElementById('kpiAlquileres').textContent     = alquilerRow.cantidad;
+
+            // Ingresos destacados
+            document.getElementById('ingresosTotal').textContent     = '$ ' + totalIngreso.toFixed(2);
+            document.getElementById('ingresosCompra').textContent    = '$ ' + compraRow.total_ingresos.toFixed(2);
+            document.getElementById('ingresosAlquiler').textContent  = '$ ' + alquilerRow.total_ingresos.toFixed(2);
+
+            // Tablas calificaciones
+            renderTabla('tbMejor', d.mejor_calificados || [], (r, i) =>
+                `<td>${i+1}</td><td>${r.titulo}</td><td>
+                    <div class="rating-bar">
+                        <div class="rating-fill" style="width:${(r.promedio/4)*80}px"></div>
+                        ${r.promedio.toFixed(2)}
+                    </div>
+                </td>`
+            );
+            renderTabla('tbPeor', d.peor_calificados || [], (r, i) =>
+                `<td>${i+1}</td><td>${r.titulo}</td><td>
+                    <div class="rating-bar">
+                        <div class="rating-fill" style="width:${(r.promedio/4)*80}px;background:#e67e22"></div>
+                        ${r.promedio.toFixed(2)}
+                    </div>
+                </td>`
+            );
+
+            // ── CHART 1: Dona — transacciones por tipo ──
+            const ctxTipos = document.getElementById('chartTipos').getContext('2d');
+            if (chartTipos) chartTipos.destroy();
+            chartTipos = new Chart(ctxTipos, {
+                type: 'doughnut',
+                data: {
+                    labels: txTipos.map(t => t.tipo),
+                    datasets: [{
+                        data: txTipos.map(t => t.cantidad),
+                        backgroundColor: ['#5dade2', '#f0a500', '#58d68d'],
+                        borderWidth: 0,
+                        hoverOffset: 8
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: {
+                        legend: { labels: { color: '#ccc', font: { size: 12 } } },
+                        tooltip: {
+                            callbacks: {
+                                label: ctx => {
+                                    const row = txTipos[ctx.dataIndex];
+                                    return ` ${row.tipo}: ${row.cantidad} tx — $${row.total_ingresos.toFixed(2)}`;
+                                }
+                            }
+                        }
+                    },
+                    cutout: '60%'
+                }
+            });
+
+            // ── CHART 2: Barras horizontales — categorías populares ──
+            const cats = d.categorias_populares || [];
+            const ctxCats = document.getElementById('chartCategorias').getContext('2d');
+            if (chartCategorias) chartCategorias.destroy();
+            chartCategorias = new Chart(ctxCats, {
+                type: 'bar',
+                data: {
+                    labels: cats.map(c => c.categoria),
+                    datasets: [{
+                        label: 'Transacciones',
+                        data: cats.map(c => c.transacciones),
+                        backgroundColor: '#e50914cc',
+                        borderRadius: 6,
+                        borderSkipped: false
+                    }]
+                },
+                options: {
+                    indexAxis: 'y',
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { display: false } },
+                    scales: {
+                        x: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: '#1e1e30' } },
+                        y: { ticks: { color: '#ccc', font: { size: 11 } }, grid: { display: false } }
+                    }
+                }
+            });
+
+            // ── CHART 3: Línea — crecimiento del catálogo ──
+            const catalogo = [...(d.crecimiento_catalogo || [])].reverse();
+            const ctxCat = document.getElementById('chartCatalogo').getContext('2d');
+            if (chartCatalogo) chartCatalogo.destroy();
+            chartCatalogo = new Chart(ctxCat, {
+                type: 'bar',
+                data: {
+                    labels: catalogo.map(r => r.anio),
+                    datasets: [{
+                        label: 'Videos añadidos',
+                        data: catalogo.map(r => r.videos),
+                        backgroundColor: '#2471a3aa',
+                        borderColor: '#5dade2',
+                        borderWidth: 1,
+                        borderRadius: 4
+                    }]
+                },
+                options: {
+                    responsive: true, maintainAspectRatio: false,
+                    plugins: { legend: { labels: { color: '#ccc' } } },
+                    scales: {
+                        x: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: '#1e1e30' } },
+                        y: { ticks: { color: '#888', font: { size: 11 } }, grid: { color: '#1e1e30' }, beginAtZero: true }
+                    }
+                }
+            });
+
+        } catch (e) {
+            console.error(e);
+        }
+    }
+
+    function renderTabla(tbId, filas, rowFn) {
+        const tb = document.getElementById(tbId);
+        if (!filas.length) { tb.innerHTML = '<tr><td colspan="5" class="loading">Sin datos</td></tr>'; return; }
+        tb.innerHTML = filas.map((r, i) => `<tr>${rowFn(r, i)}</tr>`).join('');
+    }
+
+    async function exportar(formato) {
+        const res = await fetch(`/gerente/reportes/exportar?formato=${formato}`, {
+            headers: { 'Authorization': 'Bearer ' + TOKEN }
+        });
+        if (!res.ok) { alert('Error al exportar'); return; }
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const a = document.createElement('a');
+        a.href = url;
+        a.download = `reporte_gerente.${formato === 'pdf' ? 'pdf' : 'xlsx'}`;
+        a.click();
+        URL.revokeObjectURL(url);
+    }
+
+    cargarReportes();
+</script>
+</body>
+</html>
